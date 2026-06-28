@@ -1,0 +1,14 @@
+{
+  "deepseek/deepseek-chat": {
+    "success": 6,
+    "fail": 0
+  },
+  "qwen/qwen-2.5-72b-instruct": {
+    "success": 0,
+    "fail": 0
+  },
+  "mistralai/mixtral-8x7b-instruct": {
+    "success": 0,
+    "fail": 0
+  }
+}

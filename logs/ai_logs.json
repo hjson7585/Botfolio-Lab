@@ -1,0 +1,74 @@
+[
+  {
+    "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 00:23:42",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail",
+    "trade_result": "HOLD — 매매 없음",
+    "input_tokens": 1055,
+    "output_tokens": 60,
+    "total_tokens": 1115,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 00:22:46",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail",
+    "trade_result": "HOLD — 매매 없음",
+    "input_tokens": 1055,
+    "output_tokens": 60,
+    "total_tokens": 1115,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 00:15:42",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail",
+    "trade_result": "HOLD",
+    "input_tokens": 1041,
+    "output_tokens": 60,
+    "total_tokens": 1101,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 00:08:03",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail",
+    "trade_result": "HOLD",
+    "input_tokens": 1041,
+    "output_tokens": 60,
+    "total_tokens": 1101,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail",
+    "input_tokens": 1054,
+    "output_tokens": 60,
+    "total_tokens": 1114,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "action": "HOLD",
+    "reason": "JSON parse fail",
+    "input_tokens": 105,
+    "output_tokens": 60,
+    "total_tokens": 165,
+    "model": "deepseek/deepseek-chat"
+  }
+]
