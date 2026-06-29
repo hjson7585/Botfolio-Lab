@@ -6,6 +6,48 @@ from app.db.models import Portfolio, Account
 router = APIRouter()
 
 
+def get_realtime_price(symbol: str, fallback: float) -> float:
+    """
+    우선순위:
+    1. 프리/애프터마켓 가격 (info 딕셔너리)
+    2. 정규장 현재가 (regularMarketPrice)
+    3. 1분봉 prepost=True 최신 종가
+    4. fallback (평균 단가)
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+
+        market_state = info.get("marketState", "")
+
+        # 프리마켓
+        if market_state == "PRE":
+            price = info.get("preMarketPrice")
+            if price and price > 0:
+                return round(float(price), 2)
+
+        # 애프터마켓
+        if market_state in ("POST", "POSTPOST"):
+            price = info.get("postMarketPrice")
+            if price and price > 0:
+                return round(float(price), 2)
+
+        # 정규장
+        price = info.get("regularMarketPrice")
+        if price and price > 0:
+            return round(float(price), 2)
+
+        # 최후 fallback: 1분봉 prepost 포함
+        hist = ticker.history(period="1d", interval="1m", prepost=True)
+        if not hist.empty:
+            return round(float(hist.iloc[-1]["Close"]), 2)
+
+    except Exception as e:
+        print(f"[가격 조회 오류] {symbol}: {e}")
+
+    return round(fallback, 2)
+
+
 @router.get("/portfolio")
 def get_portfolio():
     db = SessionLocal()
@@ -18,16 +60,7 @@ def get_portfolio():
         total_market_value = 0
 
         for item in items:
-            try:
-                hist = yf.Ticker(item.symbol).history(period="1d")
-                current_price = (
-                    round(float(hist.iloc[-1]["Close"]), 2)
-                    if not hist.empty
-                    else item.average_price
-                )
-            except Exception:
-                current_price = item.average_price
-
+            current_price = get_realtime_price(item.symbol, item.average_price)
             market_value = round(current_price * item.quantity, 2)
             profit_rate = (
                 round(

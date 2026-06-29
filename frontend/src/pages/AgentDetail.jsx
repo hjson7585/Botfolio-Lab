@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 const API = "http://localhost:8000";
-const REFRESH_MS = 5000; // 5초마다 실시간 갱신
+const REFRESH_MS = 2000; // 2초마다 실시간 갱신
 
 function fmt(v) {
     if (v == null || v === "") return "-";
@@ -145,8 +145,8 @@ function IndustryBearDetail() {
                             }`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
                             <p className={`text-xl font-black transition-all duration-300 ${profit_rate > 0 ? "text-green-500"
-                                    : profit_rate < 0 ? "text-red-400"
-                                        : "text-gray-800"
+                                : profit_rate < 0 ? "text-red-400"
+                                    : "text-gray-800"
                                 }`}>
                                 {profit_rate != null ? fmtPct(profit_rate) : "-"}
                             </p>
@@ -256,8 +256,8 @@ function IndustryBearDetail() {
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600"
-                                                : log.action === "SELL" ? "bg-red-100 text-red-500"
-                                                    : "bg-gray-200 text-gray-500"
+                                            : log.action === "SELL" ? "bg-red-100 text-red-500"
+                                                : "bg-gray-200 text-gray-500"
                                             }`}>
                                             {log.action || "HOLD"}
                                         </span>

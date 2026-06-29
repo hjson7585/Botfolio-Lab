@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 
 import yfinance as yf
@@ -31,15 +32,24 @@ def get_market_summary():
     result = []
     for symbol in symbols:
         try:
-            hist = yf.Ticker(symbol).history(period="5d")
-            if hist.empty or len(hist) < 2:
-                continue
-            latest = round(hist.iloc[-1]["Close"], 2)
-            prev = round(hist.iloc[-2]["Close"], 2)
-            chg = round(((latest - prev) / prev) * 100, 2) if prev else 0
-            result.append({"symbol": symbol, "price": latest, "change_pct": chg})
+            info = yf.Ticker(symbol).info
+            price = (
+                info.get("preMarketPrice")
+                or info.get("postMarketPrice")
+                or info.get("regularMarketPrice")
+            )
+            prev = info.get("regularMarketPreviousClose")
+            chg = round(((price - prev) / prev) * 100, 2) if price and prev else 0
+            result.append(
+                {
+                    "symbol": symbol,
+                    "price": round(price, 2) if price else None,
+                    "change_pct": chg,
+                    "market_state": info.get("marketState", ""),
+                }
+            )
         except Exception as e:
-            print(e)
+            print(f"[시장 요약 오류] {symbol}: {e}")
     return result
 
 
@@ -50,15 +60,16 @@ def get_industry_etf_summary():
             hist = yf.Ticker(symbol).history(period="1mo")
             if hist.empty or len(hist) < 6:
                 continue
-            latest = round(hist.iloc[-1]["Close"], 2)
-            week_ago = round(hist.iloc[-6]["Close"], 2)
-            month_ago = round(hist.iloc[0]["Close"], 2)
+            latest = round(float(hist.iloc[-1]["Close"]), 2)
+            week_ago = round(float(hist.iloc[-6]["Close"]), 2)
+            month_ago = round(float(hist.iloc[0]["Close"]), 2)
             week_chg = (
                 round(((latest - week_ago) / week_ago) * 100, 2) if week_ago else 0
             )
             month_chg = (
                 round(((latest - month_ago) / month_ago) * 100, 2) if month_ago else 0
             )
+            vol_avg = int(hist["Volume"].tail(5).mean())
             result.append(
                 {
                     "sector": sector,
@@ -66,10 +77,11 @@ def get_industry_etf_summary():
                     "price": latest,
                     "week_change_pct": week_chg,
                     "month_change_pct": month_chg,
+                    "avg_volume_5d": vol_avg,
                 }
             )
         except Exception as e:
-            print(e)
+            print(f"[ETF 요약 오류] {symbol}: {e}")
     return result
 
 
@@ -85,9 +97,45 @@ def save_log(log_data):
         logs = logs[:20]
         with open(LOG_FILE, "w", encoding="utf-8") as f:
             json.dump(logs, f, ensure_ascii=False, indent=2)
-        print("\n로그 저장 완료")
+        print("로그 저장 완료")
     except Exception as e:
-        print(e)
+        print(f"[로그 저장 오류] {e}")
+
+
+def parse_llm_response(text: str) -> dict:
+    """LLM 응답이 잘리거나 깨져도 action/selected_etf를 최대한 복구"""
+    text = text.strip()
+
+    # 코드블록 제거
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            if "{" in part:
+                text = part.strip()
+                break
+    if text.lower().startswith("json"):
+        text = text[4:].strip()
+
+    # 정상 JSON 파싱 시도
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # 잘린 JSON 복구: 정규식으로 핵심 필드만 추출
+    action_m = re.search(r'"action"\s*:\s*"(\w+)"', text)
+    etf_m = re.search(r'"selected_etf"\s*:\s*"(\w+)"', text)
+    sector_m = re.search(r'"sector"\s*:\s*"([^"]+)"', text)
+    reason_m = re.search(r'"reason"\s*:\s*"([^"]*)', text)
+
+    recovered = {
+        "action": action_m.group(1) if action_m else "HOLD",
+        "selected_etf": etf_m.group(1) if etf_m else "NONE",
+        "sector": sector_m.group(1) if sector_m else "NONE",
+        "reason": (reason_m.group(1).rstrip("\\") if reason_m else "이유 없음") + "...",
+    }
+    print(f"[JSON 복구] action={recovered['action']}, etf={recovered['selected_etf']}")
+    return recovered
 
 
 def run_industry_bear():
@@ -99,62 +147,48 @@ def run_industry_bear():
     market = get_market_summary()
     etfs = get_industry_etf_summary()
 
+    print(f"[데이터 수집 완료] ETF {len(etfs)}개, 뉴스 {len(news)}개\n")
+
     prompt = f"""
-너는 미국 산업 ETF 전문 투자 AI다.
-아래 정보를 보고 지금 가장 유망한 미국 산업 ETF 1개를 선택해서 매수(BUY)하거나, 없으면 HOLD해라.
+너는 미국 산업 ETF 전문 퀀트 투자 AI다.
+아래 실시간 데이터를 분석해서 지금 당장 매수하기 가장 좋은 산업 ETF 1개를 선택해라.
 
-[시장 요약]
-{market}
+[미국 시장 현황]
+{json.dumps(market, ensure_ascii=False)}
 
-[산업 ETF 후보 - 최근 수익률 포함]
-{etfs}
+[산업 ETF 데이터]
+{json.dumps(etfs, ensure_ascii=False)}
 
 [최신 뉴스]
-{news}
+{json.dumps(news, ensure_ascii=False)}
 
-규칙:
-1. 반드시 산업 ETF 후보 목록 안에서만 1개 선택
-2. 지금 매수할 만한 ETF가 없으면 action은 HOLD
-3. BUY이면 selected_etf에 티커, HOLD이면 selected_etf는 NONE
-4. reason은 한국어로 두 문장 이내
-5. JSON만 출력
+분석 기준:
+1. 월간/주간 수익률 모멘텀이 강한 섹터 우선
+2. 거래량이 높아 유동성이 확보된 ETF 우선
+3. VIX 높으면 방어 섹터(XLP, XLU, XLV) 선택
+4. 매수할 ETF 없으면 HOLD
 
-JSON only:
-{{
-  "action": "BUY",
-  "selected_etf": "SOXX",
-  "sector": "Semiconductors",
-  "reason": "반도체 ETF 월간 수익률이 가장 높고 관련 뉴스 모멘텀이 강합니다."
-}}
+JSON만 출력. 다른 텍스트 절대 금지. reason은 반드시 50자 이내로 작성.
+
+{{"action":"BUY","selected_etf":"XLV","sector":"Healthcare","reason":"50자 이내 이유"}}
 """
 
     result = ask_llm(prompt)
-    print("\nLLM 응답\n", result["text"])
+    print(f"[LLM 응답]\n{result['text']}\n")
 
-    try:
-        text = result["text"].strip()
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        parsed = json.loads(text.strip())
-    except Exception:
-        parsed = {
-            "action": "HOLD",
-            "selected_etf": "NONE",
-            "sector": "NONE",
-            "reason": "JSON parse fail",
-        }
+    parsed = parse_llm_response(result["text"])
 
     action = parsed.get("action", "HOLD")
     selected_etf = parsed.get("selected_etf", "NONE")
 
-    # 실제 가상 매매 실행 (BUY일 때만, 현재 잔액으로 최대 구매)
+    # 실제 가상 매매 실행
     trade_msg = "HOLD — 매매 없음"
-    if action == "BUY" and selected_etf != "NONE":
-        trade_result = buy_stock(selected_etf, 1)
+    if action == "BUY" and selected_etf and selected_etf != "NONE":
+        trade_result = buy_stock(selected_etf, use_all_cash=True)
         trade_msg = trade_result.get("message", str(trade_result))
-        print(f"\n[매수 실행] {selected_etf} → {trade_msg}")
+        print(f"[전액 매수] {selected_etf} → {trade_msg}")
+    else:
+        print("[HOLD] 매매 없음")
 
     log_data = {
         "agent": "인더스트리곰",

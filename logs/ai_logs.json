@@ -1,6 +1,32 @@
 [
   {
     "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 20:24:39",
+    "action": "BUY",
+    "selected_etf": "XLV",
+    "sector": "Healthcare",
+    "reason": "Strong monthly/weekly momentum, high liquidity, defensive sector with VIX elevated",
+    "trade_result": "XLV 621주 매수 완료 (단가 $161.00, 총 $99,981.00)",
+    "input_tokens": 1066,
+    "output_tokens": 42,
+    "total_tokens": 1108,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
+    "timestamp": "2026-06-29 20:16:08",
+    "action": "HOLD",
+    "selected_etf": "NONE",
+    "sector": "NONE",
+    "reason": "JSON parse fail: Unterminated string starting at: line 5 column 13 (char 84)",
+    "trade_result": "HOLD — 매매 없음",
+    "input_tokens": 1314,
+    "output_tokens": 60,
+    "total_tokens": 1374,
+    "model": "deepseek/deepseek-chat"
+  },
+  {
+    "agent": "인더스트리곰",
     "timestamp": "2026-06-29 00:23:42",
     "action": "HOLD",
     "selected_etf": "NONE",
