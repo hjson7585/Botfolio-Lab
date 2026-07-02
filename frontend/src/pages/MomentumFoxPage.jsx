@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ProfitChart from "../components/ProfitChart";
 
 const API = "http://localhost:8000";
 const REFRESH_MS = 2000;
@@ -47,7 +48,6 @@ function fmtPct(v) {
     const n = Number(v);
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
-// ✅ 한국 주식 관행: 양수=빨강, 음수=파랑, 0=검정
 function profitColor(v) {
     const n = Number(v);
     if (v == null || isNaN(n) || n === 0) return "text-gray-900";
@@ -108,10 +108,8 @@ function DonutChart({ items }) {
     const handleMove = (e, s) => {
         const rect = wrapRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
         setHovered({
-            symbol: s.symbol,
-            name: ETF_NAMES[s.symbol] || s.symbol,
-            weight: s.weight,
-            color: s.color,
+            symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol,
+            weight: s.weight, color: s.color,
             x: e.clientX - rect.left + 16,
             y: e.clientY - rect.top - 12,
         });
@@ -119,17 +117,14 @@ function DonutChart({ items }) {
 
     return (
         <div ref={wrapRef} className="flex flex-col items-center gap-4" style={{ position: "relative" }}>
-            <svg
-                width={200} height={200} viewBox="0 0 200 200"
+            <svg width={200} height={200} viewBox="0 0 200 200"
                 style={{ display: "block", overflow: "visible" }}
-                onMouseLeave={() => setHovered(null)}
-            >
+                onMouseLeave={() => setHovered(null)}>
                 {slices.map((s) => {
                     const gap = slices.length > 1 ? 1.5 : 0;
                     const isHov = hovered?.symbol === s.symbol;
                     return (
-                        <path
-                            key={s.symbol}
+                        <path key={s.symbol}
                             d={buildArc(CX, CY, OUTER, INNER, s.startDeg + gap, s.endDeg - gap)}
                             fill={s.color}
                             opacity={hovered ? (isHov ? 1 : 0.45) : 0.85}
@@ -151,35 +146,26 @@ function DonutChart({ items }) {
                     <>
                         <text x={CX} y={CY - 6} textAnchor="middle"
                             fill={hovered.color} fontSize={16} fontWeight={700}
-                            style={{ pointerEvents: "none" }}>
-                            {hovered.symbol}
-                        </text>
+                            style={{ pointerEvents: "none" }}>{hovered.symbol}</text>
                         <text x={CX} y={CY + 14} textAnchor="middle"
                             fill="#6b7280" fontSize={11}
-                            style={{ pointerEvents: "none" }}>
-                            {fmtPct(hovered.weight)}
-                        </text>
+                            style={{ pointerEvents: "none" }}>{fmtPct(hovered.weight)}</text>
                     </>
                 ) : (
                     <>
                         <text x={CX} y={CY - 6} textAnchor="middle"
                             fill="#9ca3af" fontSize={12}
-                            style={{ pointerEvents: "none" }}>
-                            ETF
-                        </text>
+                            style={{ pointerEvents: "none" }}>ETF</text>
                         <text x={CX} y={CY + 18} textAnchor="middle"
                             fill="#1f2937" fontSize={26} fontWeight={700}
-                            style={{ pointerEvents: "none" }}>
-                            {slices.length}
-                        </text>
+                            style={{ pointerEvents: "none" }}>{slices.length}</text>
                     </>
                 )}
             </svg>
 
             {hovered && (
                 <div style={{
-                    position: "absolute",
-                    left: hovered.x, top: hovered.y,
+                    position: "absolute", left: hovered.x, top: hovered.y,
                     pointerEvents: "none", zIndex: 999,
                     background: "rgba(17,24,39,0.95)",
                     border: `1px solid ${hovered.color}66`,
@@ -188,18 +174,11 @@ function DonutChart({ items }) {
                     minWidth: 190, backdropFilter: "blur(6px)",
                 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                        <span style={{
-                            width: 10, height: 10, borderRadius: "50%",
-                            background: hovered.color, display: "inline-block", flexShrink: 0
-                        }} />
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: hovered.color, display: "inline-block", flexShrink: 0 }} />
                         <span style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{hovered.symbol}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 5, lineHeight: 1.4 }}>
-                        {hovered.name}
-                    </div>
-                    <div style={{ fontSize: 13, color: hovered.color, fontWeight: 700 }}>
-                        비중 {fmtPct(hovered.weight)}
-                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 5, lineHeight: 1.4 }}>{hovered.name}</div>
+                    <div style={{ fontSize: 13, color: hovered.color, fontWeight: 700 }}>비중 {fmtPct(hovered.weight)}</div>
                 </div>
             )}
 
@@ -207,23 +186,17 @@ function DonutChart({ items }) {
                 {slices.map((s) => {
                     const ts = ETF_TYPE[s.symbol] ? TYPE_STYLE[ETF_TYPE[s.symbol]] : null;
                     return (
-                        <div
-                            key={s.symbol}
+                        <div key={s.symbol}
                             className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
                             style={{
                                 background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
                                 border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
                                 cursor: "pointer",
                             }}
-                            onMouseEnter={() => setHovered({
-                                symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol,
-                                weight: s.weight, color: s.color, x: 220, y: 10,
-                            })}
-                            onMouseLeave={() => setHovered(null)}
-                        >
+                            onMouseEnter={() => setHovered({ symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol, weight: s.weight, color: s.color, x: 220, y: 10 })}
+                            onMouseLeave={() => setHovered(null)}>
                             <div className="flex items-center gap-2">
-                                <span className="inline-block rounded-full"
-                                    style={{ width: 10, height: 10, background: s.color }} />
+                                <span className="inline-block rounded-full" style={{ width: 10, height: 10, background: s.color }} />
                                 <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
                                 {ts && (
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>
@@ -231,9 +204,7 @@ function DonutChart({ items }) {
                                     </span>
                                 )}
                             </div>
-                            <span className="text-sm font-bold" style={{ color: s.color }}>
-                                {fmtPct(s.weight)}
-                            </span>
+                            <span className="text-sm font-bold" style={{ color: s.color }}>{fmtPct(s.weight)}</span>
                         </div>
                     );
                 })}
@@ -250,9 +221,7 @@ function RegimeBadge({ regime }) {
     };
     const s = MAP[regime] || { label: regime || "-", cls: "bg-gray-200 text-gray-500" };
     return (
-        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${s.cls}`}>
-            {s.label}
-        </span>
+        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${s.cls}`}>{s.label}</span>
     );
 }
 
@@ -302,10 +271,8 @@ export default function MomentumFoxPage() {
                 {/* 왼쪽: 로고 + 자금현황 */}
                 <div className="w-72 shrink-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
                     <div className="flex flex-col items-center gap-3">
-                        <div
-                            className="rounded-full flex items-center justify-center text-4xl shadow-lg"
-                            style={{ width: 88, height: 88, background: "linear-gradient(135deg,#f59e0b,#ef4444)" }}
-                        >
+                        <div className="rounded-full flex items-center justify-center text-4xl shadow-lg"
+                            style={{ width: 88, height: 88, background: "linear-gradient(135deg,#f59e0b,#ef4444)" }}>
                             🦊
                         </div>
                         <h1 className="text-2xl font-black text-gray-800">모멘텀여우</h1>
@@ -317,14 +284,11 @@ export default function MomentumFoxPage() {
                     {latestLog && (
                         <div className="flex items-center justify-center gap-2 flex-wrap">
                             {latestLog.regime && <RegimeBadge regime={latestLog.regime} />}
-                            {latestLog.vix && (
-                                <span className="text-xs text-gray-400">VIX {latestLog.vix}</span>
-                            )}
+                            {latestLog.vix && <span className="text-xs text-gray-400">VIX {latestLog.vix}</span>}
                         </div>
                     )}
 
                     <div className="flex flex-col gap-3">
-                        {/* ✅ 수익률 색상 수정 */}
                         <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
                             <p className={`text-xl font-black transition-all duration-300 ${profitColor(profit_rate)}`}>
@@ -385,7 +349,6 @@ export default function MomentumFoxPage() {
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-0.5">{ETF_NAMES[item.symbol] || ""}</p>
                                                 </div>
-                                                {/* ✅ 수익률 뱃지 색상 수정 */}
                                                 <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${profitBadge(item.profit_rate)}`}>
                                                     {fmtPct(item.profit_rate)}
                                                 </span>
@@ -395,11 +358,7 @@ export default function MomentumFoxPage() {
                                                     { label: "보유 수량", value: `${fmt(item.quantity)}주` },
                                                     { label: "평균 단가", value: `$${fmt(item.avg_price)}` },
                                                     { label: "현재가", value: `$${fmt(item.current_price)}` },
-                                                    {
-                                                        label: "수익률", value: fmtPct(item.profit_rate),
-                                                        // ✅ 수익률 색상 수정
-                                                        color: profitColor(item.profit_rate),
-                                                    },
+                                                    { label: "수익률", value: fmtPct(item.profit_rate), color: profitColor(item.profit_rate) },
                                                 ].map(({ label, value, color }) => (
                                                     <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">
                                                         <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -414,6 +373,11 @@ export default function MomentumFoxPage() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* ✅ 수익률 그래프 */}
+            <div className="w-full">
+                <ProfitChart agent="fox" />
             </div>
 
             {/* AI 판단 로그 */}
@@ -442,9 +406,7 @@ export default function MomentumFoxPage() {
                                 <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-3 flex-wrap">
-                                            <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${actionCls}`}>
-                                                {action}
-                                            </span>
+                                            <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${actionCls}`}>{action}</span>
                                             {hasBuy && <span className="text-sm font-bold text-green-600">매수: {log.buys.join(", ")}</span>}
                                             {hasSell && <span className="text-sm font-bold text-red-500">매도: {log.sells.join(", ")}</span>}
                                             {log.regime && <RegimeBadge regime={log.regime} />}

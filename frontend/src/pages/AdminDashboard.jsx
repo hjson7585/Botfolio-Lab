@@ -9,13 +9,13 @@ const API = "http://localhost:8000";
 const TOKEN_COLORS = ["#3B82F6", "#10B981"];
 const AGENT_COLORS = { bear: "#3B82F6", fox: "#F59E0B", turtle: "#10B981" };
 
-/* ── 세션 UUID (브라우저 탭당 1개, 새로고침해도 유지) ── */
+// 수정 — localStorage (브라우저 재시작해도 유지)
 function getOrCreateSessionId() {
     const KEY = "botfolio_session_id";
-    let sid = sessionStorage.getItem(KEY);
+    let sid = localStorage.getItem(KEY);
     if (!sid) {
         sid = crypto.randomUUID();
-        sessionStorage.setItem(KEY, sid);
+        localStorage.setItem(KEY, sid);
     }
     return sid;
 }
@@ -505,9 +505,11 @@ export default function AdminDashboard() {
             .then((arr) => {
                 setVisitorDaily(Array.isArray(arr) ? arr : []);
                 // 오늘 방문자
-                const todayStr = new Date()
-                    .toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
-                    .replace(". ", "/").replace(".", "");
+                // 수정 — ISO 문자열에서 직접 추출 (항상 "MM/DD" 형식 보장)
+                const today = new Date();
+                const mm = String(today.getMonth() + 1).padStart(2, "0");
+                const dd = String(today.getDate()).padStart(2, "0");
+                const todayStr = `${mm}/${dd}`;  // 항상 "07/02" 형식
                 const todayRow = arr.find((r) => r.date === todayStr);
                 setTodayVisitors(todayRow?.count || 0);
             })
