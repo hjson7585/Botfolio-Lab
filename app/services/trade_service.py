@@ -6,68 +6,50 @@ from app.db.models import Portfolio, Trade, Account
 def buy_stock(symbol: str, quantity: int = 0, use_all_cash: bool = False):
     db = SessionLocal()
     try:
-        stock = yf.Ticker(symbol)
-        info = stock.info
+        info = yf.Ticker(symbol).info
         market_state = info.get("marketState", "")
-
-        # 시장 상태에 따른 현재가 우선순위
         if market_state == "PRE":
-            current_price = info.get("preMarketPrice") or info.get("regularMarketPrice")
+            price = info.get("preMarketPrice") or info.get("regularMarketPrice")
         elif market_state in ("POST", "POSTPOST"):
-            current_price = info.get("postMarketPrice") or info.get(
-                "regularMarketPrice"
-            )
+            price = info.get("postMarketPrice") or info.get("regularMarketPrice")
         else:
-            current_price = info.get("regularMarketPrice")
-
-        if not current_price:
-            hist = stock.history(period="1d")
-            if hist.empty:
-                return {"error": "가격 조회 실패"}
-            current_price = float(hist.iloc[-1]["Close"])
-
-        current_price = float(current_price)
+            price = info.get("regularMarketPrice")
+        if not price:
+            hist = yf.Ticker(symbol).history(period="1d")
+            price = float(hist.iloc[-1]["Close"]) if not hist.empty else None
+        if not price:
+            return {"error": "가격 조회 실패"}
+        price = float(price)
 
         account = db.query(Account).first()
         if not account:
             return {"error": "계좌 없음"}
 
-        # 전액 매수: 보유 현금으로 최대 수량 계산
         if use_all_cash:
-            quantity = int(account.cash // current_price)
-
+            quantity = int(account.cash // price)
         if quantity <= 0:
-            return {"error": "매수 가능 수량 없음 (잔액 부족)"}
+            return {"error": "수량 0"}
 
-        total_cost = current_price * quantity
+        total = price * quantity
+        if account.cash < total:
+            return {"error": f"잔액 부족 (필요 ${total:.0f}, 보유 ${account.cash:.0f})"}
 
-        if account.cash < total_cost:
-            return {"error": "잔액 부족"}
-
-        account.cash -= total_cost
-
+        account.cash -= total
         portfolio = db.query(Portfolio).filter(Portfolio.symbol == symbol).first()
         if portfolio:
             total_qty = portfolio.quantity + quantity
-            new_avg = (
-                (portfolio.average_price * portfolio.quantity) + total_cost
+            portfolio.average_price = (
+                (portfolio.average_price * portfolio.quantity) + total
             ) / total_qty
             portfolio.quantity = total_qty
-            portfolio.average_price = new_avg
         else:
-            portfolio = Portfolio(
-                symbol=symbol, quantity=quantity, average_price=current_price
-            )
+            portfolio = Portfolio(symbol=symbol, quantity=quantity, average_price=price)
             db.add(portfolio)
 
-        trade = Trade(
-            symbol=symbol, action="BUY", quantity=quantity, price=current_price
-        )
-        db.add(trade)
+        db.add(Trade(symbol=symbol, action="BUY", quantity=quantity, price=price))
         db.commit()
-
         return {
-            "message": f"{symbol} {quantity}주 매수 완료 (단가 ${current_price:,.2f}, 총 ${total_cost:,.2f})"
+            "message": f"{symbol} {quantity}주 매수 (${price:.2f}, 합계 ${total:.2f})"
         }
     finally:
         db.close()

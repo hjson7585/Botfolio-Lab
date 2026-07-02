@@ -2,6 +2,27 @@ import { useEffect, useMemo, useState } from "react";
 
 const API = "http://localhost:8000";
 
+const ETF_NAMES = {
+    XLK: "Technology Select Sector SPDR",
+    SOXX: "iShares Semiconductor ETF",
+    XLF: "Financial Select Sector SPDR",
+    XLY: "Consumer Discretionary Select Sector SPDR",
+    XLC: "Communication Services Select Sector SPDR",
+    XLI: "Industrial Select Sector SPDR",
+    XLE: "Energy Select Sector SPDR",
+    XLB: "Materials Select Sector SPDR",
+    XLV: "Health Care Select Sector SPDR",
+    XLP: "Consumer Staples Select Sector SPDR",
+    XLU: "Utilities Select Sector SPDR",
+    XLRE: "Real Estate Select Sector SPDR",
+};
+
+const COLORS = [
+    "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
+    "#8b5cf6", "#06b6d4", "#84cc16", "#f97316",
+    "#ec4899", "#a855f7", "#14b8a6", "#f43f5e",
+];
+
 function fmt(v) {
     if (v == null || v === "") return "-";
     return new Intl.NumberFormat("ko-KR").format(Number(v));
@@ -12,34 +33,117 @@ function fmtPct(v) {
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
+function polarToCartesian(cx, cy, r, angleDeg) {
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function buildArcPath(cx, cy, outerR, innerR, startDeg, endDeg) {
+    const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+    const o1 = polarToCartesian(cx, cy, outerR, startDeg);
+    const o2 = polarToCartesian(cx, cy, outerR, endDeg);
+    const i1 = polarToCartesian(cx, cy, innerR, endDeg);
+    const i2 = polarToCartesian(cx, cy, innerR, startDeg);
+    return [
+        `M ${o1.x} ${o1.y}`,
+        `A ${outerR} ${outerR} 0 ${largeArc} 1 ${o2.x} ${o2.y}`,
+        `L ${i1.x} ${i1.y}`,
+        `A ${innerR} ${innerR} 0 ${largeArc} 0 ${i2.x} ${i2.y}`,
+        "Z",
+    ].join(" ");
+}
+
 function DonutChart({ items }) {
+    // ✅ tooltip을 SVG 좌표가 아닌 viewport 좌표로 저장
+    const [tooltip, setTooltip] = useState(null);
+
     const slices = useMemo(() => {
         const valid = items.filter((i) => Number(i.weight) > 0);
-        const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#a855f7", "#14b8a6", "#f43f5e"];
+        const total = valid.reduce((s, i) => s + Number(i.weight), 0) || 100;
         let cum = 0;
         return valid.map((item, idx) => {
-            const start = cum;
+            const startDeg = (cum / total) * 360;
             cum += Number(item.weight);
-            return { ...item, color: colors[idx % colors.length], start };
+            const endDeg = (cum / total) * 360;
+            return { ...item, color: COLORS[idx % COLORS.length], startDeg, endDeg };
         });
     }, [items]);
 
     if (!slices.length)
         return <div style={styles.empty}>보유 ETF 없음</div>;
 
+    const CX = 110, CY = 110, OUTER = 100, INNER = 58;
+
     return (
         <div style={styles.donutWrap}>
-            <div style={{ ...styles.donut, background: `conic-gradient(${slices.map((s) => `${s.color} ${s.start}% ${s.start + s.weight}%`).join(",")})` }}>
-                <div style={styles.donutHole}>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>ETF</span>
-                    <strong style={{ fontSize: 28 }}>{slices.length}</strong>
-                </div>
+            {/* SVG 도넛 — viewport 좌표 기반 tooltip */}
+            <div style={{ position: "relative", width: 220, margin: "0 auto" }}>
+                <svg
+                    width={220}
+                    height={220}
+                    viewBox="0 0 220 220"
+                    style={{ display: "block", overflow: "visible" }}
+                    onMouseLeave={() => setTooltip(null)}
+                >
+                    {slices.map((s) => {
+                        const gap = slices.length > 1 ? 1.2 : 0;
+                        const path = buildArcPath(CX, CY, OUTER, INNER, s.startDeg + gap, s.endDeg - gap);
+                        return (
+                            <path
+                                key={s.symbol}
+                                d={path}
+                                fill={s.color}
+                                opacity={tooltip?.symbol === s.symbol ? 1 : 0.75}
+                                style={{ cursor: "pointer", transition: "opacity 0.15s" }}
+                                onMouseEnter={() =>
+                                    setTooltip({
+                                        symbol: s.symbol,
+                                        name: ETF_NAMES[s.symbol] || s.symbol,
+                                        weight: s.weight,
+                                        color: s.color,
+                                    })
+                                }
+                            />
+                        );
+                    })}
+                    {/* 가운데 구멍 */}
+                    <circle cx={CX} cy={CY} r={INNER} fill="#0f172a" stroke="rgba(148,163,184,0.15)" strokeWidth={1} />
+                    <text x={CX} y={CY - 8} textAnchor="middle" fill="#94a3b8" fontSize={12}>ETF</text>
+                    <text x={CX} y={CY + 16} textAnchor="middle" fill="#e2e8f0" fontSize={28} fontWeight={700}>
+                        {slices.length}
+                    </text>
+                </svg>
             </div>
+
+            {/* ✅ Tooltip — SVG 아래 고정 표시 (viewport 좌표 불필요) */}
+            <div style={{
+                minHeight: 64,
+                borderRadius: 12,
+                background: tooltip ? "rgba(15,23,42,0.96)" : "rgba(30,41,59,0.4)",
+                border: "1px solid rgba(148,163,184,0.2)",
+                padding: "12px 16px",
+                transition: "background 0.15s",
+                textAlign: "center",
+            }}>
+                {tooltip ? (
+                    <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: tooltip.color, display: "inline-block" }} />
+                            <span style={{ fontWeight: 700, fontSize: 15, color: "#e2e8f0" }}>{tooltip.symbol}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{tooltip.name}</div>
+                        <div style={{ fontSize: 14, color: "#93c5fd", fontWeight: 700 }}>{fmtPct(tooltip.weight)}</div>
+                    </>
+                ) : (
+                    <div style={{ color: "#64748b", fontSize: 13, paddingTop: 8 }}>조각 위에 마우스를 올려보세요</div>
+                )}
+            </div>
+
+            {/* 범례 */}
             <div style={styles.legend}>
                 {slices.map((s) => (
                     <div key={s.symbol} style={styles.legendRow}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, display: "inline-block" }} />
+                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, display: "inline-block", flexShrink: 0 }} />
                             <span style={{ fontSize: 13, color: "#e2e8f0" }}>{s.symbol}</span>
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 700 }}>{fmtPct(s.weight)}</span>
@@ -63,10 +167,8 @@ export default function IndustryBearPage() {
         <div style={styles.page}>
             <div style={styles.container}>
 
-                {/* TOP */}
                 <div style={styles.topGrid}>
 
-                    {/* LEFT — 로고 + 자금현황 */}
                     <section style={{ ...styles.panel, ...styles.leftPanel }}>
                         <div style={styles.logo}>곰</div>
                         <h1 style={{ margin: "16px 0 4px", fontSize: 26 }}>인더스트리곰</h1>
@@ -87,7 +189,6 @@ export default function IndustryBearPage() {
                         </div>
                     </section>
 
-                    {/* RIGHT — ETF 목록 */}
                     <section style={styles.panel}>
                         <div style={styles.sectionTitle}>
                             <h2 style={{ margin: 0, fontSize: 20 }}>보유 ETF 목록</h2>
@@ -106,9 +207,7 @@ export default function IndustryBearPage() {
                                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                                                 <div>
                                                     <h3 style={{ margin: 0, fontSize: 18 }}>{item.symbol}</h3>
-                                                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: 13 }}>
-                                                        {item.sector || ""}
-                                                    </p>
+                                                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: 13 }}>{item.sector || ""}</p>
                                                 </div>
                                                 <span style={styles.badge}>{fmtPct(item.weight)}</span>
                                             </div>
@@ -133,7 +232,6 @@ export default function IndustryBearPage() {
                     </section>
                 </div>
 
-                {/* BOTTOM — 판단 로그 */}
                 <section style={styles.panel}>
                     <div style={styles.sectionTitle}>
                         <h2 style={{ margin: 0, fontSize: 20 }}>AI 판단 로그</h2>
@@ -148,7 +246,11 @@ export default function IndustryBearPage() {
                                 <div key={i} style={styles.logCard}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <span style={{ ...styles.actionBadge, background: log.action === "BUY" ? "rgba(16,185,129,0.2)" : log.action === "SELL" ? "rgba(239,68,68,0.2)" : "rgba(148,163,184,0.2)", color: log.action === "BUY" ? "#6ee7b7" : log.action === "SELL" ? "#fca5a5" : "#94a3b8" }}>
+                                            <span style={{
+                                                ...styles.actionBadge,
+                                                background: log.action === "BUY" ? "rgba(16,185,129,0.2)" : log.action === "SELL" ? "rgba(239,68,68,0.2)" : "rgba(148,163,184,0.2)",
+                                                color: log.action === "BUY" ? "#6ee7b7" : log.action === "SELL" ? "#fca5a5" : "#94a3b8",
+                                            }}>
                                                 {log.action || "HOLD"}
                                             </span>
                                             <strong style={{ fontSize: 15 }}>{log.selected_etf && log.selected_etf !== "NONE" ? log.selected_etf : "-"}</strong>
@@ -183,9 +285,7 @@ const styles = {
     summaryCard: { background: "rgba(30,41,59,0.7)", borderRadius: 14, padding: 16, border: "1px solid rgba(148,163,184,0.12)" },
     sectionTitle: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
     etfLayout: { display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 },
-    donutWrap: { display: "grid", gap: 16 },
-    donut: { width: 220, height: 220, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" },
-    donutHole: { width: 120, height: 120, borderRadius: "50%", background: "#0f172a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "1px solid rgba(148,163,184,0.15)" },
+    donutWrap: { display: "grid", gap: 12 },
     legend: { display: "grid", gap: 8 },
     legendRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 10, background: "rgba(30,41,59,0.55)" },
     detailCard: { background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)", borderRadius: 14, padding: 16 },

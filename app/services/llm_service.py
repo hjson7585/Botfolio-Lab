@@ -71,8 +71,8 @@ def ask_llm(prompt: str):
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=60,
-                temperature=0.2,
+                max_tokens=50,
+                temperature=0.2,  # 더 일관된 출력
             )
 
             text = response.choices[0].message.content
