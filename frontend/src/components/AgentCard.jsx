@@ -16,11 +16,7 @@ function AgentCard({ agent }) {
         <div
 
             onClick={() => {
-
-                navigate(
-
-                    `/agent/${agent.id}`
-                );
+                navigate(agent.path || `/agent/${agent.id}`);
             }}
 
             className="

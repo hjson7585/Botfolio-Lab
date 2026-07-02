@@ -24,29 +24,27 @@ function Home({
 
         user?.email === ADMIN_EMAIL;
 
-    // AI 에이전트 데이터
     const agents = [
-
         {
             id: 1,
             name: "인더스트리곰",
             character: "🐻",
             profit: "+12.4%",
             market: "미국 산업 ETF",
-            style: "장기 투자",
-            strategy: "산업 사이클 분석"
+            style: "중장기 투자",
+            strategy: "산업 사이클 분석",
+            path: "/agent/industry-bear",   // ✅ 추가
         },
-
         {
             id: 2,
             name: "모멘텀여우",
             character: "🦊",
             profit: "+7.1%",
             market: "미국 기술 성장주",
-            style: "공격형 투자",
-            strategy: "모멘텀 전략"
+            style: "단기 투자",
+            strategy: "모멘텀 전략",
+            path: "/momentum-fox",          // ✅ 추가
         },
-
         {
             id: 3,
             name: "배당거북",
@@ -54,8 +52,9 @@ function Home({
             profit: "+5.3%",
             market: "고배당 ETF",
             style: "안정형 투자",
-            strategy: "배당 복리 전략"
-        }
+            strategy: "배당 복리 전략",
+            path: "/agent/dividend-turtle",
+        },
     ];
 
     return (
