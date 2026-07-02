@@ -1,11 +1,27 @@
-import { useEffect, useState } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { useEffect, useMemo, useState } from "react";
+import {
+    PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Legend,
+    BarChart, Bar,
+} from "recharts";
 
 const API = "http://localhost:8000";
 const TOKEN_COLORS = ["#3B82F6", "#10B981"];
+const AGENT_COLORS = { bear: "#3B82F6", fox: "#F59E0B", turtle: "#10B981" };
+
+/* ── 세션 UUID (브라우저 탭당 1개, 새로고침해도 유지) ── */
+function getOrCreateSessionId() {
+    const KEY = "botfolio_session_id";
+    let sid = sessionStorage.getItem(KEY);
+    if (!sid) {
+        sid = crypto.randomUUID();
+        sessionStorage.setItem(KEY, sid);
+    }
+    return sid;
+}
 
 /* ─────────────────────────────────────────────────────────────
-   전략 파라미터 — 3개 에이전트 동일 12개 항목 구조
+   전략 파라미터
 ───────────────────────────────────────────────────────────── */
 const PARAMS = {
     bear: [
@@ -133,13 +149,55 @@ const AGENT_META = {
     turtle: { label: "🐢 배당거북", active: "bg-emerald-500 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
 };
 
-/* ─── 손절/익절 행 강조용 색상 매핑 ─── */
 const HIGHLIGHT_KEYS = {
     "손절 기준": "text-red-500",
     "익절 기준": "text-green-500",
     "진입 조건": "text-indigo-600",
     "리밸런싱": "text-orange-500",
 };
+
+/* ─────────────────────────────────────────────────────────────
+   유틸
+───────────────────────────────────────────────────────────── */
+function buildDailyTokens(logs) {
+    const map = {};
+    logs.forEach((log) => {
+        if (!log.timestamp) return;
+        const dateStr = log.timestamp.slice(0, 10);
+        if (!map[dateStr]) map[dateStr] = { input: 0, output: 0 };
+        map[dateStr].input += log.input_tokens || 0;
+        map[dateStr].output += log.output_tokens || 0;
+    });
+    return Object.entries(map)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({
+            date: date.slice(5).replace("-", "/"),
+            input: v.input,
+            output: v.output,
+            total: v.input + v.output,
+        }));
+}
+
+function buildCombinedDailyTokens(allLogs) {
+    const map = {};
+    Object.entries(allLogs).forEach(([agent, logs]) => {
+        logs.forEach((log) => {
+            if (!log.timestamp) return;
+            const date = log.timestamp.slice(0, 10);
+            if (!map[date]) map[date] = { bear: 0, fox: 0, turtle: 0 };
+            map[date][agent] += (log.input_tokens || 0) + (log.output_tokens || 0);
+        });
+    });
+    return Object.entries(map)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({
+            date: date.slice(5).replace("-", "/"),
+            bear: v.bear,
+            fox: v.fox,
+            turtle: v.turtle,
+            total: v.bear + v.fox + v.turtle,
+        }));
+}
 
 /* ─────────────────────────────────────────────────────────────
    서브 컴포넌트
@@ -150,12 +208,10 @@ function ParamTable({ params, accentBg, accentText, accentBorder }) {
             {params.map(([k, v], idx) => {
                 const hlColor = HIGHLIGHT_KEYS[k] || accentText;
                 return (
-                    <div
-                        key={k}
+                    <div key={k}
                         className={`flex justify-between items-start gap-3 px-4 py-3 text-sm
                             ${idx % 2 === 0 ? accentBg : "bg-white"}
-                            ${idx !== params.length - 1 ? `border-b ${accentBorder}` : ""}`}
-                    >
+                            ${idx !== params.length - 1 ? `border-b ${accentBorder}` : ""}`}>
                         <span className="text-gray-400 shrink-0 w-28">{k}</span>
                         <span className={`font-semibold text-right leading-snug ${hlColor}`}>{v}</span>
                     </div>
@@ -243,8 +299,8 @@ function LogList({ logs, type }) {
                         <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`text-xs font-bold px-3 py-1 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                        log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                            "bg-gray-200 text-gray-500"}`}>
+                                    log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                        "bg-gray-200 text-gray-500"}`}>
                                     {log.action || "HOLD"}
                                 </span>
                                 <strong className="text-sm text-gray-700">
@@ -271,15 +327,14 @@ function LogList({ logs, type }) {
         );
     }
 
-    // bear — 새 로그 구조 반영 (buys/sells/sma200_weak/sentiment_signals)
+    // bear
     return (
         <div className="flex flex-col gap-3">
             {logs.map((log, i) => {
                 const hasBuy = log.buys?.length > 0;
                 const hasSell = log.sells?.length > 0;
                 const isSkip = log.action === "SKIP_REBALANCE";
-                const action = isSkip
-                    ? "SKIP"
+                const action = isSkip ? "SKIP"
                     : hasBuy && hasSell ? "REBAL"
                         : hasBuy ? "BUY"
                             : hasSell ? "SELL"
@@ -291,46 +346,34 @@ function LogList({ logs, type }) {
                     HOLD: "bg-gray-200 text-gray-500",
                     SKIP: "bg-gray-100 text-gray-400",
                 }[action];
-
-                // 뉴스 감성 신호 요약
                 const sentimentEntries = log.sentiment_signals
-                    ? Object.entries(log.sentiment_signals)
-                    : [];
+                    ? Object.entries(log.sentiment_signals) : [];
 
                 return (
                     <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                         <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${cls}`}>
-                                    {action}
-                                </span>
+                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${cls}`}>{action}</span>
                                 {hasBuy && <span className="text-xs font-bold text-green-600">매수: {log.buys.join(", ")}</span>}
                                 {hasSell && <span className="text-xs font-bold text-red-500">매도: {log.sells.join(", ")}</span>}
                                 {log.regime && <span className="text-xs text-gray-400">{log.regime}</span>}
                                 {log.sma200_weak?.length > 0 && (
-                                    <span className="text-xs text-orange-400">
-                                        SMA200↓ {log.sma200_weak.join(", ")}
-                                    </span>
+                                    <span className="text-xs text-orange-400">SMA200↓ {log.sma200_weak.join(", ")}</span>
                                 )}
                             </div>
                             <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
                         </div>
-
-                        {/* 뉴스 장기 감성 신호 */}
                         {sentimentEntries.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                                 {sentimentEntries.map(([sym, s]) => (
                                     <span key={sym}
                                         className={`text-xs font-bold px-2 py-0.5 rounded-full
-                                            ${s.score > 0
-                                                ? "bg-green-50 text-green-600"
-                                                : "bg-red-50 text-red-500"}`}>
+                                            ${s.score > 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
                                         {s.score > 0 ? "📈" : "📉"} {sym}
                                     </span>
                                 ))}
                             </div>
                         )}
-
                         {log.note && <p className="text-xs text-gray-500 mb-1 italic">"{log.note}"</p>}
                         <div className="flex gap-3 text-xs text-gray-300">
                             <span>모델: {log.model || "-"}</span>
@@ -345,15 +388,133 @@ function LogList({ logs, type }) {
     );
 }
 
+/* ─── 차트 컴포넌트 ─── */
+function AgentTokenLineChart({ dailyData, agentKey }) {
+    const color = AGENT_COLORS[agentKey];
+    if (!dailyData.length)
+        return (
+            <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
+                데이터 없음
+            </div>
+        );
+    return (
+        <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={48} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                    formatter={(v, n) => [v.toLocaleString(), n]} />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                <Line type="monotone" dataKey="input" name="입력 토큰" stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="output" name="출력 토큰" stroke={TOKEN_COLORS[1]} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="total" name="합계" stroke="#111827" strokeWidth={1.5} dot={false} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+}
+
+function CombinedTokenLineChart({ combinedData }) {
+    if (!combinedData.length)
+        return (
+            <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
+                데이터 없음
+            </div>
+        );
+    return (
+        <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={combinedData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={52} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                    formatter={(v, n) => [v.toLocaleString(), n]} />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                <Line type="monotone" dataKey="bear" name="🐻 인더스트리곰" stroke={AGENT_COLORS.bear} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="fox" name="🦊 모멘텀여우" stroke={AGENT_COLORS.fox} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="turtle" name="🐢 배당거북" stroke={AGENT_COLORS.turtle} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="total" name="전체 합계" stroke="#6b7280" strokeWidth={2} strokeDasharray="5 3" dot={false} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+}
+
+/* ✅ 일별 방문자 바 + 라인 차트 */
+function VisitorLineChart({ dailyData }) {
+    if (!dailyData.length)
+        return (
+            <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
+                방문 데이터 없음
+            </div>
+        );
+    return (
+        <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <YAxis
+                    tick={{ fontSize: 11, fill: "#9ca3af" }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                    allowDecimals={false}
+                />
+                <Tooltip
+                    contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                    formatter={(v) => [`${v}명`, "방문자"]}
+                />
+                <Bar dataKey="count" name="방문자" fill="#3B82F6" radius={[6, 6, 0, 0]} maxBarSize={36} />
+            </BarChart>
+        </ResponsiveContainer>
+    );
+}
+
 /* ─────────────────────────────────────────────────────────────
    메인 컴포넌트
 ───────────────────────────────────────────────────────────── */
 export default function AdminDashboard() {
     const [activeAgent, setActiveAgent] = useState("bear");
-    const [visitorCount, setVisitorCount] = useState(0);
     const [allLogs, setAllLogs] = useState({ bear: [], fox: [], turtle: [] });
     const [allTokens, setAllTokens] = useState({ bear: [], fox: [], turtle: [] });
 
+    // ✅ 방문자 상태
+    const [visitorTotal, setVisitorTotal] = useState(0);
+    const [visitorDaily, setVisitorDaily] = useState([]);
+    const [todayVisitors, setTodayVisitors] = useState(0);
+
+    /* ── 방문 기록 + 집계 로드 ── */
+    useEffect(() => {
+        const sid = getOrCreateSessionId();
+
+        // 방문 신고 (세션당 하루 1회)
+        fetch(`${API}/visit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sid }),
+        }).catch(() => { });
+
+        // 누적 방문자 수
+        fetch(`${API}/visit-count`)
+            .then((r) => r.json())
+            .then((d) => setVisitorTotal(d.total || 0))
+            .catch(() => { });
+
+        // 일별 방문자 (최근 30일)
+        fetch(`${API}/visit-daily?days=30`)
+            .then((r) => r.json())
+            .then((arr) => {
+                setVisitorDaily(Array.isArray(arr) ? arr : []);
+                // 오늘 방문자
+                const todayStr = new Date()
+                    .toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
+                    .replace(". ", "/").replace(".", "");
+                const todayRow = arr.find((r) => r.date === todayStr);
+                setTodayVisitors(todayRow?.count || 0);
+            })
+            .catch(() => { });
+    }, []);
+
+    /* ── AI 로그 로드 ── */
     useEffect(() => {
         const calcTokens = (data) => {
             let inp = 0, out = 0;
@@ -367,7 +528,6 @@ export default function AdminDashboard() {
                 const data = Array.isArray(d) ? d : [];
                 setAllLogs((p) => ({ ...p, bear: data }));
                 setAllTokens((p) => ({ ...p, bear: calcTokens(data) }));
-                setVisitorCount((p) => p + data.length);
             }).catch(() => { });
 
         fetch(`${API}/fox-logs`)
@@ -390,6 +550,24 @@ export default function AdminDashboard() {
     const logs = allLogs[activeAgent];
     const tokenData = allTokens[activeAgent];
 
+    const dailyTokens = useMemo(
+        () => buildDailyTokens(allLogs[activeAgent]),
+        [allLogs, activeAgent]
+    );
+
+    const combinedDailyTokens = useMemo(
+        () => buildCombinedDailyTokens(allLogs),
+        [allLogs]
+    );
+
+    const totalAllTokens = useMemo(() => {
+        let total = 0;
+        Object.values(allLogs).forEach((logs) =>
+            logs.forEach((l) => { total += (l.input_tokens || 0) + (l.output_tokens || 0); })
+        );
+        return total;
+    }, [allLogs]);
+
     const accentMap = {
         bear: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-100" },
         fox: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-100" },
@@ -401,23 +579,54 @@ export default function AdminDashboard() {
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-12">
 
-            {/* 헤더 */}
+            {/* ── 헤더 ── */}
             <div className="mb-10">
                 <h1 className="text-5xl font-black text-gray-800 mb-2">관리자 대시보드</h1>
                 <p className="text-gray-400 text-lg">Botfolio AI 관리자 시스템</p>
             </div>
 
-            {/* 방문자 + 토큰 */}
+            {/* ── 상단 요약 카드 2열 ── */}
             <div className="grid grid-cols-2 gap-8 mb-10">
 
+                {/* ✅ 방문자 카드 — 누적 + 오늘 + 일별 바차트 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <p className="text-gray-400 mb-3 text-sm">전체 방문자 수</p>
-                    <h2 className="text-6xl font-black text-blue-500">{visitorCount}</h2>
+                    <p className="text-gray-400 mb-1 text-sm">방문자 현황</p>
+
+                    {/* 누적 + 오늘 요약 */}
+                    <div className="flex items-end gap-6 mb-6">
+                        <div>
+                            <p className="text-xs text-gray-400 mb-1">누적 방문자</p>
+                            <h2 className="text-6xl font-black text-blue-500">
+                                {visitorTotal.toLocaleString()}
+                            </h2>
+                        </div>
+                        <div className="mb-2">
+                            <p className="text-xs text-gray-400 mb-1">오늘 방문자</p>
+                            <p className="text-3xl font-black text-indigo-400">
+                                {todayVisitors.toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* 일별 바차트 */}
+                    <div>
+                        <p className="text-xs text-gray-400 mb-3">일별 방문자 (최근 30일)</p>
+                        <VisitorLineChart dailyData={visitorDaily} />
+                    </div>
                 </div>
 
+                {/* 토큰 파이 차트 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-xl font-black text-gray-800">deepseek 토큰 사용량</h2>
+                        <div>
+                            <h2 className="text-xl font-black text-gray-800">deepseek 토큰 사용량</h2>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                                전체 합산:{" "}
+                                <span className="font-bold text-gray-600">
+                                    {totalAllTokens.toLocaleString()} 토큰
+                                </span>
+                            </p>
+                        </div>
                         <div className="flex gap-2 flex-wrap">
                             {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
                                 <button key={key} onClick={() => setActiveAgent(key)}
@@ -445,8 +654,7 @@ export default function AdminDashboard() {
                     <div className="flex gap-6 justify-center mt-2">
                         {["입력 토큰", "출력 토큰"].map((label, idx) => (
                             <div key={label} className="flex items-center gap-2 text-sm">
-                                <div className="w-3 h-3 rounded-full"
-                                    style={{ background: TOKEN_COLORS[idx] }} />
+                                <div className="w-3 h-3 rounded-full" style={{ background: TOKEN_COLORS[idx] }} />
                                 {label}
                             </div>
                         ))}
@@ -454,7 +662,70 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            {/* 에이전트 탭 */}
+            {/* ── 일별 토큰 라인 — 에이전트별 ── */}
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-10">
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 className="text-xl font-black text-gray-800">📈 일별 토큰 사용량</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                            {AGENT_META[activeAgent].label} — 입력 / 출력 토큰 추이
+                        </p>
+                    </div>
+                    <div className="flex gap-2">
+                        {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
+                            <button key={key} onClick={() => setActiveAgent(key)}
+                                className={`text-xs font-bold px-3 py-1.5 rounded-full transition
+                                    ${activeAgent === key ? active : inactive}`}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    {[
+                        { label: "입력 토큰 합계", value: (tokenData[0]?.value || 0).toLocaleString(), color: "text-blue-500" },
+                        { label: "출력 토큰 합계", value: (tokenData[1]?.value || 0).toLocaleString(), color: "text-emerald-500" },
+                        { label: "총 토큰", value: ((tokenData[0]?.value || 0) + (tokenData[1]?.value || 0)).toLocaleString(), color: "text-black-800" },
+                    ].map(({ label, value, color }) => (
+                        <div key={label} className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
+                            <p className="text-xs text-gray-400 mb-1">{label}</p>
+                            <p className={`text-2xl font-black ${color}`}>{value}</p>
+                        </div>
+                    ))}
+                </div>
+                <AgentTokenLineChart dailyData={dailyTokens} agentKey={activeAgent} />
+            </div>
+
+            {/* ── 전체 에이전트 합산 ── */}
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-10">
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 className="text-xl font-black text-gray-800">🔢 전체 에이전트 토큰 합산 추이</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">인더스트리곰 · 모멘텀여우 · 배당거북 일별 비교</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-2xl px-5 py-3 border border-gray-100 text-right">
+                        <p className="text-xs text-gray-400">3개 에이전트 누적 합계</p>
+                        <p className="text-2xl font-black text-gray-700">{totalAllTokens.toLocaleString()}</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    {Object.entries(AGENT_META).map(([key, { label }]) => {
+                        const agentTotal = allLogs[key].reduce(
+                            (s, l) => s + (l.input_tokens || 0) + (l.output_tokens || 0), 0
+                        );
+                        return (
+                            <div key={key} className="rounded-2xl px-5 py-4 border"
+                                style={{ background: `${AGENT_COLORS[key]}10`, borderColor: `${AGENT_COLORS[key]}33` }}>
+                                <p className="text-xs font-semibold mb-1" style={{ color: AGENT_COLORS[key] }}>{label}</p>
+                                <p className="text-2xl font-black text-gray-800">{agentTotal.toLocaleString()}</p>
+                            </div>
+                        );
+                    })}
+                </div>
+                <CombinedTokenLineChart combinedData={combinedDailyTokens} />
+            </div>
+
+            {/* ── 에이전트 탭 ── */}
             <div className="flex gap-3 mb-8">
                 {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
                     <button key={key} onClick={() => setActiveAgent(key)}
@@ -465,10 +736,8 @@ export default function AdminDashboard() {
                 ))}
             </div>
 
-            {/* 3단 패널 */}
+            {/* ── 3단 패널 ── */}
             <div className="grid grid-cols-3 gap-8">
-
-                {/* 전략 파라미터 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <h3 className="text-lg font-black text-gray-800 mb-4">⚙️ 전략 파라미터</h3>
                     <ParamTable
@@ -478,17 +747,10 @@ export default function AdminDashboard() {
                         accentBorder={accent.border}
                     />
                 </div>
-
-                {/* ETF 유니버스 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <h3 className="text-lg font-black text-gray-800 mb-4">📋 ETF 유니버스</h3>
-                    <EtfList
-                        universe={ETF_UNIVERSE[activeAgent]}
-                        typeMap={typeMapBy[activeAgent]}
-                    />
+                    <EtfList universe={ETF_UNIVERSE[activeAgent]} typeMap={typeMapBy[activeAgent]} />
                 </div>
-
-                {/* AI 로그 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-black text-gray-800">🤖 AI 판단 로그</h3>

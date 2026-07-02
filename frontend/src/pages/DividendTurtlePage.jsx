@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const API = "http://localhost:8000";
 const REFRESH_MS = 2000;
+const DIVIDEND_REFRESH_MS = 60000; // 배당금은 1분 주기 (yfinance 부하 방지)
 
 const ETF_NAMES = {
     SCHD: "Schwab U.S. Dividend Equity ETF",
@@ -49,7 +50,10 @@ function fmtPct(v) {
     const n = Number(v);
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
-// ✅ 한국 주식 관행: 양수=빨강, 음수=파랑, 0=검정
+function fmtUSD(v) {
+    if (v == null || v === "") return "-";
+    return `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 function profitColor(v) {
     const n = Number(v);
     if (v == null || isNaN(n) || n === 0) return "text-gray-900";
@@ -250,11 +254,19 @@ export default function DividendTurtlePage() {
     const [portfolioData, setPortfolioData] = useState({
         portfolio: [], cash: null, total_asset: null, profit_rate: null,
     });
+    const [dividendData, setDividendData] = useState({
+        total_dividend: null,
+        dividend_by_symbol: [],
+    });
     const [lastUpdated, setLastUpdated] = useState(null);
     const [flash, setFlash] = useState(false);
+    const [divFlash, setDivFlash] = useState(false);
     const timerRef = useRef(null);
+    const divTimerRef = useRef(null);
     const prevProfitRef = useRef(null);
+    const prevDivRef = useRef(null);
 
+    // 포트폴리오 폴링 (2초)
     const fetchPortfolio = () => {
         fetch(`${API}/turtle-portfolio`)
             .then((r) => r.json())
@@ -270,24 +282,58 @@ export default function DividendTurtlePage() {
             .catch(() => { });
     };
 
+    // 누적 배당금 폴링 (1분)
+    const fetchDividend = () => {
+        fetch(`${API}/turtle-dividend`)
+            .then((r) => r.json())
+            .then((d) => {
+                if (
+                    prevDivRef.current !== null &&
+                    prevDivRef.current !== d.total_dividend
+                ) {
+                    setDivFlash(true);
+                    setTimeout(() => setDivFlash(false), 800);
+                }
+                prevDivRef.current = d.total_dividend;
+                setDividendData(d);
+            })
+            .catch(() => { });
+    };
+
     useEffect(() => {
         fetch(`${API}/turtle-logs`)
             .then((r) => r.json())
             .then((d) => setLogs(Array.isArray(d) ? d : []))
             .catch(() => { });
+
         fetchPortfolio();
+        fetchDividend();
+
         timerRef.current = setInterval(fetchPortfolio, REFRESH_MS);
-        return () => clearInterval(timerRef.current);
+        divTimerRef.current = setInterval(fetchDividend, DIVIDEND_REFRESH_MS);
+
+        return () => {
+            clearInterval(timerRef.current);
+            clearInterval(divTimerRef.current);
+        };
     }, []);
 
     const { portfolio, cash, total_asset, profit_rate } = portfolioData;
+    const { total_dividend, dividend_by_symbol } = dividendData;
+
+    // 종목별 배당금 맵 (ETF 카드에서 빠르게 조회용)
+    const divMap = useMemo(() => {
+        const m = {};
+        (dividend_by_symbol || []).forEach((d) => { m[d.symbol] = d; });
+        return m;
+    }, [dividend_by_symbol]);
 
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-10">
 
             <div className="flex gap-8 items-start mb-8">
 
-                {/* 왼쪽: 로고 + 자금현황 */}
+                {/* ── 왼쪽: 로고 + 자금현황 + 누적배당금 ── */}
                 <div className="w-72 shrink-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
                     <div className="flex flex-col items-center gap-3">
                         <div
@@ -298,29 +344,73 @@ export default function DividendTurtlePage() {
                         </div>
                         <h1 className="text-2xl font-black text-gray-800">배당거북</h1>
                         <p className="text-sm text-gray-400 text-center leading-relaxed">
-                            고배당 ETF AI 자동매매 에이전트<br />
+                            고배당 ETF AI 자동매매 에이전트
                         </p>
                     </div>
 
                     <div className="flex flex-col gap-3">
-                        {/* ✅ 수익률 색상 수정 */}
-                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
+                        {/* 수익률 */}
+                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300
+                            ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
                             <p className={`text-xl font-black transition-all duration-300 ${profitColor(profit_rate)}`}>
                                 {profit_rate != null ? fmtPct(profit_rate) : "-"}
                             </p>
                         </div>
-                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
+
+                        {/* 총 자산 */}
+                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300
+                            ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">총 자산</p>
                             <p className="text-xl font-black text-gray-800">
                                 {total_asset != null ? `$${fmt(total_asset)}` : "-"}
                             </p>
                         </div>
+
+                        {/* 보유 현금 */}
                         <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                             <p className="text-xs text-gray-400 mb-1">보유 현금</p>
                             <p className="text-xl font-black text-gray-800">
                                 {cash != null ? `$${fmt(cash)}` : "-"}
                             </p>
+                        </div>
+
+                        {/* ✅ 누적 배당금 카드 */}
+                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300
+                            ${divFlash
+                                ? "bg-emerald-50 border-emerald-300"
+                                : "bg-emerald-50 border-emerald-100"}`}>
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs text-emerald-600 font-semibold">💰 누적 배당금</p>
+                                <span className="text-xs text-emerald-400">보유기간 합산</span>
+                            </div>
+                            <p className={`text-2xl font-black text-emerald-600 transition-all duration-300
+                                ${divFlash ? "scale-105" : ""}`}>
+                                {total_dividend != null ? fmtUSD(total_dividend) : "-"}
+                            </p>
+
+                            {/* 종목별 배당금 소계 */}
+                            {dividend_by_symbol && dividend_by_symbol.length > 0 && (
+                                <div className="mt-3 flex flex-col gap-1.5">
+                                    {dividend_by_symbol
+                                        .filter((d) => d.total_dividend > 0)
+                                        .sort((a, b) => b.total_dividend - a.total_dividend)
+                                        .map((d) => (
+                                            <div key={d.symbol}
+                                                className="flex items-center justify-between text-xs">
+                                                <span className="text-emerald-700 font-bold">{d.symbol}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-400">
+                                                        {d.dividend_count}회 지급
+                                                    </span>
+                                                    <span className="text-emerald-600 font-semibold">
+                                                        {fmtUSD(d.total_dividend)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -332,7 +422,7 @@ export default function DividendTurtlePage() {
                     )}
                 </div>
 
-                {/* 오른쪽: ETF 목록 */}
+                {/* ── 오른쪽: ETF 목록 ── */}
                 <div className="flex-1 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-black text-gray-800">보유 ETF 목록</h2>
@@ -351,6 +441,7 @@ export default function DividendTurtlePage() {
                                 portfolio.map((item) => {
                                     const type = ETF_TYPE[item.symbol];
                                     const ts = type ? TYPE_STYLE[type] : null;
+                                    const div = divMap[item.symbol];
                                     return (
                                         <div key={item.symbol} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
                                             <div className="flex items-start justify-between mb-4">
@@ -365,19 +456,20 @@ export default function DividendTurtlePage() {
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-0.5">{ETF_NAMES[item.symbol] || ""}</p>
                                                 </div>
-                                                {/* ✅ 수익률 뱃지 색상 수정 */}
                                                 <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${profitBadge(item.profit_rate)}`}>
                                                     {fmtPct(item.profit_rate)}
                                                 </span>
                                             </div>
-                                            <div className="grid grid-cols-4 gap-3">
+
+                                            {/* 기존 4개 지표 */}
+                                            <div className="grid grid-cols-4 gap-3 mb-3">
                                                 {[
                                                     { label: "보유 수량", value: `${fmt(item.quantity)}주` },
                                                     { label: "평균 단가", value: `$${fmt(item.avg_price)}` },
                                                     { label: "현재가", value: `$${fmt(item.current_price)}` },
                                                     {
-                                                        label: "수익률", value: fmtPct(item.profit_rate),
-                                                        // ✅ 수익률 색상 수정
+                                                        label: "수익률",
+                                                        value: fmtPct(item.profit_rate),
                                                         color: profitColor(item.profit_rate),
                                                     },
                                                 ].map(({ label, value, color }) => (
@@ -387,6 +479,24 @@ export default function DividendTurtlePage() {
                                                     </div>
                                                 ))}
                                             </div>
+
+                                            {/* ✅ 누적 배당금 인라인 표시 */}
+                                            {div && div.total_dividend > 0 && (
+                                                <div className="flex items-center justify-between bg-emerald-50 rounded-xl px-4 py-2.5 border border-emerald-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-emerald-500 text-sm">💰</span>
+                                                        <span className="text-xs text-emerald-600 font-semibold">
+                                                            누적 배당금
+                                                        </span>
+                                                        <span className="text-xs text-gray-400">
+                                                            ({div.dividend_count}회 수령)
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-sm font-black text-emerald-600">
+                                                        {fmtUSD(div.total_dividend)}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })
@@ -396,7 +506,7 @@ export default function DividendTurtlePage() {
                 </div>
             </div>
 
-            {/* AI 판단 로그 */}
+            {/* ── AI 판단 로그 ── */}
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-black text-gray-800">AI 판단 로그</h2>
@@ -413,9 +523,9 @@ export default function DividendTurtlePage() {
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                            log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                                log.action === "HOLD" ? "bg-gray-200 text-gray-500" :
-                                                    "bg-teal-100 text-teal-600"
+                                                log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                                    log.action === "HOLD" ? "bg-gray-200 text-gray-500" :
+                                                        "bg-teal-100 text-teal-600"
                                             }`}>
                                             {log.action || "HOLD"}
                                         </span>
