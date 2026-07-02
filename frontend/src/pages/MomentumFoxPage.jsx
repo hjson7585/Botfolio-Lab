@@ -48,7 +48,6 @@ function fmtPct(v) {
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
-/* ── SVG 헬퍼 ── */
 function polarToCartesian(cx, cy, r, deg) {
     const rad = ((deg - 90) * Math.PI) / 180;
     return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
@@ -69,7 +68,6 @@ function buildArc(cx, cy, outerR, innerR, startDeg, endDeg) {
     ].join(" ");
 }
 
-/* ── DonutChart ── */
 function DonutChart({ items }) {
     const wrapRef = useRef(null);
     const [hovered, setHovered] = useState(null);
@@ -136,7 +134,6 @@ function DonutChart({ items }) {
                         />
                     );
                 })}
-                {/* 가운데 흰 원 */}
                 <circle cx={CX} cy={CY} r={INNER} fill="white" stroke="#f3f4f6" strokeWidth={1}
                     style={{ pointerEvents: "none" }} />
                 {hovered ? (
@@ -168,7 +165,6 @@ function DonutChart({ items }) {
                 )}
             </svg>
 
-            {/* 커서 따라다니는 툴팁 */}
             {hovered && (
                 <div style={{
                     position: "absolute",
@@ -183,7 +179,7 @@ function DonutChart({ items }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{
                             width: 10, height: 10, borderRadius: "50%",
-                            background: hovered.color, display: "inline-block", flexShrink: 0,
+                            background: hovered.color, display: "inline-block", flexShrink: 0
                         }} />
                         <span style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{hovered.symbol}</span>
                     </div>
@@ -196,49 +192,45 @@ function DonutChart({ items }) {
                 </div>
             )}
 
-            {/* 범례 */}
             <div className="w-full flex flex-col gap-2">
-                {slices.map((s) => (
-                    <div
-                        key={s.symbol}
-                        className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
-                        style={{
-                            background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
-                            border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
-                            cursor: "pointer",
-                        }}
-                        onMouseEnter={() => setHovered({
-                            symbol: s.symbol,
-                            name: ETF_NAMES[s.symbol] || s.symbol,
-                            weight: s.weight, color: s.color,
-                            x: 220, y: 10,
-                        })}
-                        onMouseLeave={() => setHovered(null)}
-                    >
-                        <div className="flex items-center gap-2">
-                            <span className="inline-block rounded-full"
-                                style={{ width: 10, height: 10, background: s.color }} />
-                            <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
-                            {ETF_TYPE[s.symbol] && (() => {
-                                const ts = TYPE_STYLE[ETF_TYPE[s.symbol]];
-                                return (
+                {slices.map((s) => {
+                    const ts = ETF_TYPE[s.symbol] ? TYPE_STYLE[ETF_TYPE[s.symbol]] : null;
+                    return (
+                        <div
+                            key={s.symbol}
+                            className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
+                            style={{
+                                background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
+                                border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
+                                cursor: "pointer",
+                            }}
+                            onMouseEnter={() => setHovered({
+                                symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol,
+                                weight: s.weight, color: s.color, x: 220, y: 10,
+                            })}
+                            onMouseLeave={() => setHovered(null)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="inline-block rounded-full"
+                                    style={{ width: 10, height: 10, background: s.color }} />
+                                <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
+                                {ts && (
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>
                                         {ETF_TYPE[s.symbol]}
                                     </span>
-                                );
-                            })()}
+                                )}
+                            </div>
+                            <span className="text-sm font-bold" style={{ color: s.color }}>
+                                {fmtPct(s.weight)}
+                            </span>
                         </div>
-                        <span className="text-sm font-bold" style={{ color: s.color }}>
-                            {fmtPct(s.weight)}
-                        </span>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
 }
 
-/* ── 레짐 뱃지 ── */
 function RegimeBadge({ regime }) {
     const MAP = {
         RISK_ON: { label: "RISK ON", cls: "bg-green-100 text-green-600" },
@@ -253,9 +245,6 @@ function RegimeBadge({ regime }) {
     );
 }
 
-/* ════════════════════════════════
-   메인 페이지
-════════════════════════════════ */
 export default function MomentumFoxPage() {
     const [logs, setLogs] = useState([]);
     const [portfolioData, setPortfolioData] = useState({
@@ -266,7 +255,6 @@ export default function MomentumFoxPage() {
     const timerRef = useRef(null);
     const prevProfitRef = useRef(null);
 
-    /* 포트폴리오 실시간 폴링 — 인더스트리곰과 동일한 2초 주기 */
     const fetchPortfolio = () => {
         fetch(`${API}/fox-portfolio`)
             .then((r) => r.json())
@@ -287,7 +275,6 @@ export default function MomentumFoxPage() {
             .then((r) => r.json())
             .then((d) => setLogs(Array.isArray(d) ? d : []))
             .catch(() => { });
-
         fetchPortfolio();
         timerRef.current = setInterval(fetchPortfolio, REFRESH_MS);
         return () => clearInterval(timerRef.current);
@@ -299,10 +286,9 @@ export default function MomentumFoxPage() {
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-10">
 
-            {/* ── 상단: 왼쪽 요약 + 오른쪽 ETF 목록 ── */}
             <div className="flex gap-8 items-start mb-8">
 
-                {/* 왼쪽: 로고 + 자금현황 + 전략 파라미터 */}
+                {/* 왼쪽: 로고 + 자금현황 */}
                 <div className="w-72 shrink-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
                     <div className="flex flex-col items-center gap-3">
                         <div
@@ -315,10 +301,8 @@ export default function MomentumFoxPage() {
                         <p className="text-sm text-gray-400 text-center leading-relaxed">
                             미국 ETF 단기 모멘텀 AI 자동매매 에이전트
                         </p>
-                        <p className="text-xs text-gray-300">듀얼 모멘텀 · 보유기간 1주~3개월</p>
                     </div>
 
-                    {/* 레짐 + VIX */}
                     {latestLog && (
                         <div className="flex items-center justify-center gap-2 flex-wrap">
                             {latestLog.regime && <RegimeBadge regime={latestLog.regime} />}
@@ -328,7 +312,6 @@ export default function MomentumFoxPage() {
                         </div>
                     )}
 
-                    {/* 자금현황 — 인더스트리곰과 동일한 flash 효과 */}
                     <div className="flex flex-col gap-3">
                         <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
@@ -350,24 +333,6 @@ export default function MomentumFoxPage() {
                         </div>
                     </div>
 
-                    {/* 전략 파라미터 */}
-                    <div className="bg-amber-50 rounded-2xl px-5 py-4 border border-amber-100">
-                        <p className="text-xs font-bold text-amber-600 mb-3">⚡ 전략 파라미터</p>
-                        {[
-                            ["보유기간", "1주 ~ 3개월"],
-                            ["손절", "-7.0%"],
-                            ["익절", "+20.0%"],
-                            ["최대보유", "5종목"],
-                            ["스코어", "5점 만점 / 최소 3점"],
-                            ["레짐", "VIX 25 / 35 기준"],
-                        ].map(([k, v]) => (
-                            <div key={k} className="flex justify-between text-xs mb-1.5">
-                                <span className="text-gray-400">{k}</span>
-                                <span className="text-gray-700 font-semibold">{v}</span>
-                            </div>
-                        ))}
-                    </div>
-
                     {lastUpdated && (
                         <div className="flex items-center justify-center gap-2">
                             <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -382,14 +347,10 @@ export default function MomentumFoxPage() {
                         <h2 className="text-2xl font-black text-gray-800">보유 ETF 목록</h2>
                         <span className="text-sm text-gray-400">보유 비중 및 실시간 상세 정보</span>
                     </div>
-
                     <div className="flex gap-8">
-                        {/* 도넛 차트 */}
                         <div className="w-56 shrink-0">
                             <DonutChart items={portfolio || []} />
                         </div>
-
-                        {/* ETF 카드 목록 */}
                         <div className="flex-1 flex flex-col gap-4">
                             {!portfolio || portfolio.length === 0 ? (
                                 <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
@@ -410,9 +371,7 @@ export default function MomentumFoxPage() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-gray-400 mt-0.5">
-                                                        {ETF_NAMES[item.symbol] || ""}
-                                                    </p>
+                                                    <p className="text-xs text-gray-400 mt-0.5">{ETF_NAMES[item.symbol] || ""}</p>
                                                 </div>
                                                 <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${Number(item.profit_rate) >= 0 ? "bg-green-100 text-green-600" : "bg-red-100 text-red-500"}`}>
                                                     {fmtPct(item.profit_rate)}
@@ -425,7 +384,7 @@ export default function MomentumFoxPage() {
                                                     { label: "현재가", value: `$${fmt(item.current_price)}` },
                                                     {
                                                         label: "수익률", value: fmtPct(item.profit_rate),
-                                                        color: item.profit_rate > 0 ? "text-green-500" : item.profit_rate < 0 ? "text-red-400" : "text-gray-800"
+                                                        color: item.profit_rate > 0 ? "text-green-500" : item.profit_rate < 0 ? "text-red-400" : "text-gray-800",
                                                     },
                                                 ].map(({ label, value, color }) => (
                                                     <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">
@@ -443,49 +402,12 @@ export default function MomentumFoxPage() {
                 </div>
             </div>
 
-            {/* ── ETF 유니버스 현황판 ── */}
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-8">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-black text-gray-800">ETF 유니버스</h2>
-                    <span className="text-sm text-gray-400">모멘텀여우 운용 대상 12종</span>
-                </div>
-                <div className="grid grid-cols-4 gap-3">
-                    {Object.entries(ETF_NAMES).map(([sym, name]) => {
-                        const type = ETF_TYPE[sym];
-                        const ts = type ? TYPE_STYLE[type] : null;
-                        const isHeld = (portfolio || []).some((p) => p.symbol === sym);
-                        return (
-                            <div key={sym}
-                                className={`rounded-2xl p-4 border transition-all ${isHeld ? "border-amber-200 bg-amber-50" : "border-gray-100 bg-gray-50"}`}>
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-black text-gray-800">{sym}</span>
-                                    <div className="flex gap-1">
-                                        {ts && (
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>
-                                                {type}
-                                            </span>
-                                        )}
-                                        {isHeld && (
-                                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-600">
-                                                보유
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <p className="text-xs text-gray-400 leading-relaxed">{name}</p>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* ── AI 판단 로그 ── */}
+            {/* AI 판단 로그 */}
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-black text-gray-800">AI 판단 로그</h2>
                     <span className="text-sm text-gray-400">최근 20건</span>
                 </div>
-
                 {logs.length === 0 ? (
                     <div className="flex items-center justify-center h-32 rounded-2xl bg-gray-50 text-gray-400 text-sm">
                         아직 표시할 판단 로그가 없습니다.
@@ -502,7 +424,6 @@ export default function MomentumFoxPage() {
                                 REBAL: "bg-amber-100 text-amber-600",
                                 HOLD: "bg-gray-200 text-gray-500",
                             }[action];
-
                             return (
                                 <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
                                     <div className="flex items-center justify-between mb-2">
@@ -510,23 +431,13 @@ export default function MomentumFoxPage() {
                                             <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${actionCls}`}>
                                                 {action}
                                             </span>
-                                            {hasBuy && (
-                                                <span className="text-sm font-bold text-green-600">
-                                                    매수: {log.buys.join(", ")}
-                                                </span>
-                                            )}
-                                            {hasSell && (
-                                                <span className="text-sm font-bold text-red-500">
-                                                    매도: {log.sells.join(", ")}
-                                                </span>
-                                            )}
+                                            {hasBuy && <span className="text-sm font-bold text-green-600">매수: {log.buys.join(", ")}</span>}
+                                            {hasSell && <span className="text-sm font-bold text-red-500">매도: {log.sells.join(", ")}</span>}
                                             {log.regime && <RegimeBadge regime={log.regime} />}
                                         </div>
                                         <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
                                     </div>
-                                    {log.note && (
-                                        <p className="text-sm text-gray-600 mb-2 italic">"{log.note}"</p>
-                                    )}
+                                    {log.note && <p className="text-sm text-gray-600 mb-2 italic">"{log.note}"</p>}
                                     {log.trade_results?.length > 0 && (
                                         <div className="mb-2">
                                             {log.trade_results.map((r, j) => (
