@@ -1,34 +1,24 @@
 import { useEffect, useState } from "react";
-
 import {
-    BrowserRouter,
-    Routes,
-    Route,
-    Navigate,
+    BrowserRouter, Routes, Route, Navigate,
 } from "react-router-dom";
-
 import {
-    signInWithPopup,
-    signOut,
-    onAuthStateChanged,
+    signInWithPopup, signOut, onAuthStateChanged,
 } from "firebase/auth";
-
 import { doc, setDoc } from "firebase/firestore";
-
 import { auth, provider, db } from "./firebase";
 
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/AdminDashboard";
-import IndustryBearPage from "./IndustryBearPage";
+import IndustryBearPage from "./pages/IndustryBearPage";
 import MomentumFoxPage from "./pages/MomentumFoxPage";
+import DividendTurtlePage from "./pages/DividendTurtlePage";
 
 function App() {
     const [user, setUser] = useState(null);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-        });
+        const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
         return () => unsubscribe();
     }, []);
 
@@ -44,57 +34,28 @@ function App() {
                     visitedAt: new Date(),
                     userAgent: navigator.userAgent,
                 });
-            } catch (error) {
-                console.log(error);
-            }
+            } catch (e) { console.log(e); }
         };
         trackVisitor();
     }, []);
 
-    const login = async () => {
-        try {
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            console.log(error);
-        }
-    };
-
-    const logout = async () => {
-        try {
-            await signOut(auth);
-        } catch (error) {
-            console.log(error);
-        }
-    };
+    const login = async () => { try { await signInWithPopup(auth, provider); } catch (e) { console.log(e); } };
+    const logout = async () => { try { await signOut(auth); } catch (e) { console.log(e); } };
 
     return (
         <BrowserRouter>
             <Routes>
-
-                <Route
-                    path="/"
-                    element={<Home user={user} login={login} logout={logout} />}
-                />
-
-                <Route
-                    path="/agent/industry-bear"
-                    element={<IndustryBearPage />}
-                />
-
-                <Route
-                    path="/momentum-fox"
-                    element={<MomentumFoxPage />}
-                />
-
-                <Route
-                    path="/admin"
+                <Route path="/" element={<Home user={user} login={login} logout={logout} />} />
+                <Route path="/agent/industry-bear" element={<IndustryBearPage />} />
+                <Route path="/momentum-fox" element={<MomentumFoxPage />} />
+                <Route path="/agent/dividend-turtle" element={<DividendTurtlePage />} />
+                <Route path="/admin"
                     element={
                         user?.email === "hjson7585@gmail.com"
                             ? <AdminDashboard />
                             : <Navigate to="/" />
                     }
                 />
-
             </Routes>
         </BrowserRouter>
     );

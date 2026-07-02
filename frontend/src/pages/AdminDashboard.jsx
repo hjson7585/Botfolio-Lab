@@ -2,38 +2,102 @@ import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 const API = "http://localhost:8000";
+const TOKEN_COLORS = ["#3B82F6", "#10B981"];
 
-const BEAR_PARAMS = [
-    ["보유기간", "제한 없음 (장기)"],
-    ["손절", "-10.0%"],
-    ["익절", "없음 (장기 보유)"],
-    ["최대보유", "3종목"],
-    ["전략", "산업 사이클 분석"],
-    ["실행주기", "매일 오전 10:31 ET"],
-];
+/* ─────────────────────────────────────────────────────────────
+   전략 파라미터 — 3개 에이전트 동일 12개 항목 구조
+───────────────────────────────────────────────────────────── */
+const PARAMS = {
+    bear: [
+        ["전략 유형", "산업 사이클 섹터 로테이션"],
+        ["투자 기간", "제한 없음 (장기 보유)"],
+        ["실행 주기", "매일 오전 10:31 ET (장 마감 후)"],
+        ["ETF 유니버스", "12개 섹터 ETF"],
+        ["최대 보유 종목", "3종목"],
+        ["종목당 비중", "포트폴리오의 최대 33%"],
+        ["진입 조건", "섹터 스코어 상위 + MA50 위 + RSI 40~65"],
+        ["AI 모델", "deepseek"],
+        ["토큰 절감", "상위 후보 3개만 LLM 전달"],
+        ["손절 기준", "-10.0% (평균 단가 대비)"],
+        ["익절 기준", "없음 — 사이클 반전 시 매도"],
+        ["리밸런싱", "스코어 역전 시 하위 종목 교체"],
+    ],
+    fox: [
+        ["전략 유형", "단기 모멘텀 + 시장 레짐 필터"],
+        ["투자 기간", "1주 ~ 3개월"],
+        ["실행 주기", "매일 오전 10:31 ET (장 마감 후)"],
+        ["ETF 유니버스", "12개 ETF (공격·코어·팩터·방어)"],
+        ["최대 보유 종목", "5종목"],
+        ["종목당 비중", "포트폴리오의 최대 20%"],
+        ["진입 조건", "모멘텀 스코어 3점↑ / 5점 만점"],
+        ["AI 모델", "deepseek"],
+        ["토큰 절감", "레짐 필터 후 상위 후보만 LLM 전달"],
+        ["손절 기준", "-7.0% (평균 단가 대비)"],
+        ["익절 기준", "+20.0% (평균 단가 대비)"],
+        ["리밸런싱", "VIX 25↑ 방어 전환 / VIX 35↑ 현금화"],
+    ],
+    turtle: [
+        ["전략 유형", "고배당 ETF 장기 배당 복리 투자"],
+        ["투자 기간", "6개월 ~ 2년"],
+        ["실행 주기", "매일 오전 10:31 ET (장 마감 후)"],
+        ["ETF 유니버스", "12개 고배당 ETF"],
+        ["최대 보유 종목", "3종목"],
+        ["종목당 비중", "포트폴리오의 최대 33%"],
+        ["진입 조건", "배당수익률 3%↑ + MA50 위 + RSI 45~65 + 배당성장 3년↑"],
+        ["AI 모델", "deepseek"],
+        ["토큰 절감", "배당스코어 상위 후보 3개만 LLM 전달"],
+        ["손절 기준", "-12.0% (평균 단가 대비)"],
+        ["익절 기준", "+30.0% 또는 배당 삭감 감지 즉시 매도"],
+        ["리밸런싱", "분기 배당 재투자 + 배당수익률 역전 시 교체"],
+    ],
+};
 
-const FOX_PARAMS = [
-    ["보유기간", "1주 ~ 3개월"],
-    ["손절", "-7.0%"],
-    ["익절", "+20.0%"],
-    ["최대보유", "5종목"],
-    ["스코어", "5점 만점 / 최소 3점"],
-    ["레짐", "VIX 25 / 35 기준"],
-];
-
-const FOX_ETF_NAMES = {
-    QQQ: "Invesco QQQ Trust (Nasdaq-100)",
-    VGT: "Vanguard Information Technology ETF",
-    SOXX: "iShares Semiconductor ETF",
-    SMH: "VanEck Semiconductor ETF",
-    SPY: "SPDR S&P 500 ETF",
-    VOO: "Vanguard S&P 500 ETF",
-    IWM: "iShares Russell 2000 ETF",
-    MTUM: "iShares MSCI USA Momentum Factor ETF",
-    QUAL: "iShares MSCI USA Quality Factor ETF",
-    TLT: "iShares 20+ Year Treasury Bond ETF",
-    IEF: "iShares 7-10 Year Treasury Bond ETF",
-    GLD: "SPDR Gold Shares",
+/* ─────────────────────────────────────────────────────────────
+   ETF 유니버스
+───────────────────────────────────────────────────────────── */
+const ETF_UNIVERSE = {
+    bear: {
+        XLK: "Technology Select Sector SPDR",
+        SOXX: "iShares Semiconductor ETF",
+        XLF: "Financial Select Sector SPDR",
+        XLY: "Consumer Discretionary Select Sector",
+        XLC: "Communication Services Select Sector",
+        XLI: "Industrial Select Sector SPDR",
+        XLE: "Energy Select Sector SPDR",
+        XLB: "Materials Select Sector SPDR",
+        XLV: "Health Care Select Sector SPDR",
+        XLP: "Consumer Staples Select Sector SPDR",
+        XLU: "Utilities Select Sector SPDR",
+        XLRE: "Real Estate Select Sector SPDR",
+    },
+    fox: {
+        QQQ: "Invesco QQQ Trust (Nasdaq-100)",
+        VGT: "Vanguard Information Technology ETF",
+        SOXX: "iShares Semiconductor ETF",
+        SMH: "VanEck Semiconductor ETF",
+        SPY: "SPDR S&P 500 ETF",
+        VOO: "Vanguard S&P 500 ETF",
+        IWM: "iShares Russell 2000 ETF",
+        MTUM: "iShares MSCI USA Momentum Factor ETF",
+        QUAL: "iShares MSCI USA Quality Factor ETF",
+        TLT: "iShares 20+ Year Treasury Bond ETF",
+        IEF: "iShares 7-10 Year Treasury Bond ETF",
+        GLD: "SPDR Gold Shares",
+    },
+    turtle: {
+        SCHD: "Schwab U.S. Dividend Equity ETF",
+        DGRO: "iShares Core Dividend Growth ETF",
+        VYM: "Vanguard High Dividend Yield ETF",
+        VIG: "Vanguard Dividend Appreciation ETF",
+        HDV: "iShares Core High Dividend ETF",
+        SPYD: "SPDR Portfolio S&P 500 High Div ETF",
+        JEPI: "JPMorgan Equity Premium Income ETF",
+        JEPQ: "JPMorgan Nasdaq Equity Premium ETF",
+        DIVO: "Amplify CWP Enhanced Dividend Income",
+        VNQ: "Vanguard Real Estate ETF",
+        XLU: "Utilities Select Sector SPDR ETF",
+        NOBL: "ProShares S&P 500 Dividend Aristocrats",
+    },
 };
 
 const FOX_ETF_TYPE = {
@@ -43,51 +107,96 @@ const FOX_ETF_TYPE = {
     TLT: "방어", IEF: "방어", GLD: "방어",
 };
 
+const TURTLE_ETF_TYPE = {
+    SCHD: "배당성장", DGRO: "배당성장", VIG: "배당성장", NOBL: "배당성장",
+    VYM: "고배당", HDV: "고배당", SPYD: "고배당",
+    JEPI: "커버드콜", JEPQ: "커버드콜", DIVO: "커버드콜",
+    VNQ: "리츠",
+    XLU: "유틸리티",
+};
+
 const TYPE_STYLE = {
     공격: { bg: "bg-amber-100", text: "text-amber-600" },
     코어: { bg: "bg-blue-100", text: "text-blue-600" },
     팩터: { bg: "bg-purple-100", text: "text-purple-600" },
     방어: { bg: "bg-green-100", text: "text-green-600" },
+    배당성장: { bg: "bg-blue-100", text: "text-blue-600" },
+    고배당: { bg: "bg-green-100", text: "text-green-600" },
+    커버드콜: { bg: "bg-amber-100", text: "text-amber-600" },
+    리츠: { bg: "bg-purple-100", text: "text-purple-600" },
+    유틸리티: { bg: "bg-teal-100", text: "text-teal-600" },
 };
 
-const BEAR_ETF_NAMES = {
-    XLK: "Technology Select Sector SPDR",
-    SOXX: "iShares Semiconductor ETF",
-    XLF: "Financial Select Sector SPDR",
-    XLY: "Consumer Discretionary Select Sector SPDR",
-    XLC: "Communication Services Select Sector SPDR",
-    XLI: "Industrial Select Sector SPDR",
-    XLE: "Energy Select Sector SPDR",
-    XLB: "Materials Select Sector SPDR",
-    XLV: "Health Care Select Sector SPDR",
-    XLP: "Consumer Staples Select Sector SPDR",
-    XLU: "Utilities Select Sector SPDR",
-    XLRE: "Real Estate Select Sector SPDR",
+const AGENT_META = {
+    bear: { label: "🐻 인더스트리곰", active: "bg-blue-500 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
+    fox: { label: "🦊 모멘텀여우", active: "bg-amber-400 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
+    turtle: { label: "🐢 배당거북", active: "bg-emerald-500 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
 };
 
-const TOKEN_COLORS = ["#3B82F6", "#10B981"];
+/* ─── 손절/익절 행 강조용 색상 매핑 ─── */
+const HIGHLIGHT_KEYS = {
+    "손절 기준": "text-red-500",
+    "익절 기준": "text-green-500",
+    "진입 조건": "text-indigo-600",
+    "리밸런싱": "text-orange-500",
+};
 
+/* ─────────────────────────────────────────────────────────────
+   서브 컴포넌트
+───────────────────────────────────────────────────────────── */
 function ParamTable({ params, accentBg, accentText, accentBorder }) {
     return (
-        <div className={`rounded-2xl px-5 py-4 border ${accentBg} ${accentBorder}`}>
-            {params.map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm mb-2 last:mb-0">
-                    <span className="text-gray-400">{k}</span>
-                    <span className={`font-semibold ${accentText}`}>{v}</span>
-                </div>
-            ))}
+        <div className={`rounded-2xl border overflow-hidden ${accentBorder}`}>
+            {params.map(([k, v], idx) => {
+                const hlColor = HIGHLIGHT_KEYS[k] || accentText;
+                return (
+                    <div
+                        key={k}
+                        className={`flex justify-between items-start gap-3 px-4 py-3 text-sm
+                            ${idx % 2 === 0 ? accentBg : "bg-white"}
+                            ${idx !== params.length - 1 ? `border-b ${accentBorder}` : ""}`}
+                    >
+                        <span className="text-gray-400 shrink-0 w-28">{k}</span>
+                        <span className={`font-semibold text-right leading-snug ${hlColor}`}>{v}</span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function EtfList({ universe, typeMap }) {
+    return (
+        <div className="flex flex-col gap-2 max-h-[460px] overflow-y-auto pr-1">
+            {Object.entries(universe).map(([sym, name]) => {
+                const type = typeMap?.[sym];
+                const ts = type ? TYPE_STYLE[type] : null;
+                return (
+                    <div key={sym}
+                        className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                        <div className="flex items-center gap-2">
+                            <span className="font-black text-gray-800 text-sm">{sym}</span>
+                            {ts && (
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>
+                                    {type}
+                                </span>
+                            )}
+                        </div>
+                        <span className="text-xs text-gray-400 text-right max-w-[150px] leading-tight">{name}</span>
+                    </div>
+                );
+            })}
         </div>
     );
 }
 
 function LogList({ logs, type }) {
-    if (!logs.length) {
+    if (!logs.length)
         return (
             <div className="flex items-center justify-center h-24 rounded-2xl bg-gray-50 text-gray-400 text-sm">
                 로그 없음
             </div>
         );
-    }
 
     if (type === "fox") {
         return (
@@ -96,7 +205,7 @@ function LogList({ logs, type }) {
                     const hasBuy = log.buys?.length > 0;
                     const hasSell = log.sells?.length > 0;
                     const action = hasBuy && hasSell ? "REBAL" : hasBuy ? "BUY" : hasSell ? "SELL" : "HOLD";
-                    const actionCls = {
+                    const cls = {
                         BUY: "bg-green-100 text-green-600",
                         SELL: "bg-red-100 text-red-500",
                         REBAL: "bg-amber-100 text-amber-600",
@@ -106,7 +215,7 @@ function LogList({ logs, type }) {
                         <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                             <div className="flex items-center justify-between mb-1">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${actionCls}`}>{action}</span>
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${cls}`}>{action}</span>
                                     {hasBuy && <span className="text-xs font-bold text-green-600">매수: {log.buys.join(", ")}</span>}
                                     {hasSell && <span className="text-xs font-bold text-red-500">매도: {log.sells.join(", ")}</span>}
                                     {log.regime && <span className="text-xs text-gray-400">{log.regime}</span>}
@@ -126,7 +235,43 @@ function LogList({ logs, type }) {
         );
     }
 
-    // bear 로그
+    if (type === "turtle") {
+        return (
+            <div className="flex flex-col gap-3">
+                {logs.map((log, i) => (
+                    <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
+                                    log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                        "bg-gray-200 text-gray-500"}`}>
+                                    {log.action || "HOLD"}
+                                </span>
+                                <strong className="text-sm text-gray-700">
+                                    {log.selected_etf && log.selected_etf !== "NONE" ? log.selected_etf : "-"}
+                                </strong>
+                                {log.div_yield && (
+                                    <span className="text-xs bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-full">
+                                        배당수익률 {log.div_yield}%
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-1">{log.reason || "-"}</p>
+                        <div className="flex gap-3 text-xs text-gray-300">
+                            <span>모델: {log.model || "-"}</span>
+                            <span>토큰: {log.total_tokens ?? "-"}</span>
+                            {log.score && <span>점수: {log.score}/10</span>}
+                            {log.trade_result && <span>매매결과: {log.trade_result}</span>}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // bear
     return (
         <div className="flex flex-col gap-3">
             {logs.map((log, i) => (
@@ -134,9 +279,8 @@ function LogList({ logs, type }) {
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                             <span className={`text-xs font-bold px-3 py-1 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                    log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                        "bg-gray-200 text-gray-500"
-                                }`}>
+                                log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                    "bg-gray-200 text-gray-500"}`}>
                                 {log.action || "HOLD"}
                             </span>
                             <strong className="text-sm text-gray-700">
@@ -160,42 +304,58 @@ function LogList({ logs, type }) {
     );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   메인 컴포넌트
+───────────────────────────────────────────────────────────── */
 export default function AdminDashboard() {
     const [activeAgent, setActiveAgent] = useState("bear");
     const [visitorCount, setVisitorCount] = useState(0);
-    const [bearLogs, setBearLogs] = useState([]);
-    const [foxLogs, setFoxLogs] = useState([]);
-    const [bearTokenData, setBearTokenData] = useState([]);
-    const [foxTokenData, setFoxTokenData] = useState([]);
+    const [allLogs, setAllLogs] = useState({ bear: [], fox: [], turtle: [] });
+    const [allTokens, setAllTokens] = useState({ bear: [], fox: [], turtle: [] });
 
     useEffect(() => {
-        // 인더스트리곰 로그
+        const calcTokens = (data) => {
+            let inp = 0, out = 0;
+            data.forEach((l) => { inp += l.input_tokens || 0; out += l.output_tokens || 0; });
+            return [{ name: "입력 토큰", value: inp }, { name: "출력 토큰", value: out }];
+        };
+
         fetch(`${API}/ai-logs`)
             .then((r) => r.json())
-            .then((data) => {
-                setBearLogs(Array.isArray(data) ? data : []);
-                setVisitorCount((prev) => prev + (Array.isArray(data) ? data.length : 0));
-                let inp = 0, out = 0;
-                data.forEach((l) => { inp += l.input_tokens || 0; out += l.output_tokens || 0; });
-                setBearTokenData([{ name: "입력 토큰", value: inp }, { name: "출력 토큰", value: out }]);
-            })
-            .catch(() => { });
+            .then((d) => {
+                const data = Array.isArray(d) ? d : [];
+                setAllLogs((p) => ({ ...p, bear: data }));
+                setAllTokens((p) => ({ ...p, bear: calcTokens(data) }));
+                setVisitorCount((p) => p + data.length);
+            }).catch(() => { });
 
-        // 모멘텀여우 로그
         fetch(`${API}/fox-logs`)
             .then((r) => r.json())
-            .then((data) => {
-                setFoxLogs(Array.isArray(data) ? data : []);
-                let inp = 0, out = 0;
-                data.forEach((l) => { inp += l.input_tokens || 0; out += l.output_tokens || 0; });
-                setFoxTokenData([{ name: "입력 토큰", value: inp }, { name: "출력 토큰", value: out }]);
-            })
-            .catch(() => { });
+            .then((d) => {
+                const data = Array.isArray(d) ? d : [];
+                setAllLogs((p) => ({ ...p, fox: data }));
+                setAllTokens((p) => ({ ...p, fox: calcTokens(data) }));
+            }).catch(() => { });
+
+        fetch(`${API}/turtle-logs`)
+            .then((r) => r.json())
+            .then((d) => {
+                const data = Array.isArray(d) ? d : [];
+                setAllLogs((p) => ({ ...p, turtle: data }));
+                setAllTokens((p) => ({ ...p, turtle: calcTokens(data) }));
+            }).catch(() => { });
     }, []);
 
-    const isBear = activeAgent === "bear";
-    const logs = isBear ? bearLogs : foxLogs;
-    const tokenData = isBear ? bearTokenData : foxTokenData;
+    const logs = allLogs[activeAgent];
+    const tokenData = allTokens[activeAgent];
+
+    const accentMap = {
+        bear: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-100" },
+        fox: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-100" },
+        turtle: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-100" },
+    };
+    const accent = accentMap[activeAgent];
+    const typeMapBy = { bear: {}, fox: FOX_ETF_TYPE, turtle: TURTLE_ETF_TYPE };
 
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-12">
@@ -206,8 +366,9 @@ export default function AdminDashboard() {
                 <p className="text-gray-400 text-lg">Botfolio AI 관리자 시스템</p>
             </div>
 
-            {/* 방문자 + 토큰 요약 */}
+            {/* 방문자 + 토큰 */}
             <div className="grid grid-cols-2 gap-8 mb-10">
+
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <p className="text-gray-400 mb-3 text-sm">전체 방문자 수</p>
                     <h2 className="text-6xl font-black text-blue-500">{visitorCount}</h2>
@@ -215,27 +376,22 @@ export default function AdminDashboard() {
 
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-xl font-black text-gray-800">토큰 사용량</h2>
-                        <div className="flex gap-2">
-                            {["bear", "fox"].map((a) => (
-                                <button
-                                    key={a}
-                                    onClick={() => setActiveAgent(a)}
-                                    className={`text-xs font-bold px-3 py-1.5 rounded-full transition ${activeAgent === a
-                                            ? a === "bear" ? "bg-blue-500 text-white" : "bg-amber-400 text-white"
-                                            : "bg-gray-100 text-gray-500"
-                                        }`}
-                                >
-                                    {a === "bear" ? "🐻 인더스트리곰" : "🦊 모멘텀여우"}
+                        <h2 className="text-xl font-black text-gray-800">deepseek 토큰 사용량</h2>
+                        <div className="flex gap-2 flex-wrap">
+                            {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
+                                <button key={key} onClick={() => setActiveAgent(key)}
+                                    className={`text-xs font-bold px-3 py-1.5 rounded-full transition
+                                        ${activeAgent === key ? active : inactive}`}>
+                                    {label}
                                 </button>
                             ))}
                         </div>
                     </div>
-                    <div className="w-full h-[220px]">
+                    <div className="w-full h-[200px]">
                         <ResponsiveContainer>
                             <PieChart>
                                 <Pie data={tokenData} cx="50%" cy="50%"
-                                    innerRadius={60} outerRadius={90}
+                                    innerRadius={55} outerRadius={85}
                                     paddingAngle={5} dataKey="value">
                                     {tokenData.map((_, idx) => (
                                         <Cell key={idx} fill={TOKEN_COLORS[idx]} />
@@ -246,70 +402,49 @@ export default function AdminDashboard() {
                         </ResponsiveContainer>
                     </div>
                     <div className="flex gap-6 justify-center mt-2">
-                        <div className="flex items-center gap-2 text-sm">
-                            <div className="w-3 h-3 bg-blue-500 rounded-full" /> 입력 토큰
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                            <div className="w-3 h-3 bg-green-500 rounded-full" /> 출력 토큰
-                        </div>
+                        {["입력 토큰", "출력 토큰"].map((label, idx) => (
+                            <div key={label} className="flex items-center gap-2 text-sm">
+                                <div className="w-3 h-3 rounded-full"
+                                    style={{ background: TOKEN_COLORS[idx] }} />
+                                {label}
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
 
             {/* 에이전트 탭 */}
             <div className="flex gap-3 mb-8">
-                {[
-                    { key: "bear", label: "🐻 인더스트리곰", active: "bg-blue-500 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
-                    { key: "fox", label: "🦊 모멘텀여우", active: "bg-amber-400 text-white", inactive: "bg-white text-gray-500 border border-gray-100" },
-                ].map(({ key, label, active, inactive }) => (
-                    <button
-                        key={key}
-                        onClick={() => setActiveAgent(key)}
-                        className={`px-6 py-3 rounded-2xl font-bold text-sm shadow-sm transition ${activeAgent === key ? active : inactive}`}
-                    >
+                {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
+                    <button key={key} onClick={() => setActiveAgent(key)}
+                        className={`px-6 py-3 rounded-2xl font-bold text-sm shadow-sm transition
+                            ${activeAgent === key ? active : inactive}`}>
                         {label}
                     </button>
                 ))}
             </div>
 
-            {/* 에이전트별 상세 */}
+            {/* 3단 패널 */}
             <div className="grid grid-cols-3 gap-8">
 
                 {/* 전략 파라미터 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-black text-gray-800 mb-4">
-                        {isBear ? "⚙️ 전략 파라미터" : "⚡ 전략 파라미터"}
-                    </h3>
+                    <h3 className="text-lg font-black text-gray-800 mb-4">⚙️ 전략 파라미터</h3>
                     <ParamTable
-                        params={isBear ? BEAR_PARAMS : FOX_PARAMS}
-                        accentBg={isBear ? "bg-blue-50" : "bg-amber-50"}
-                        accentText={isBear ? "text-blue-700" : "text-amber-700"}
-                        accentBorder={isBear ? "border-blue-100" : "border-amber-100"}
+                        params={PARAMS[activeAgent]}
+                        accentBg={accent.bg}
+                        accentText={accent.text}
+                        accentBorder={accent.border}
                     />
                 </div>
 
                 {/* ETF 유니버스 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <h3 className="text-lg font-black text-gray-800 mb-4">📋 ETF 유니버스</h3>
-                    <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1">
-                        {Object.entries(isBear ? BEAR_ETF_NAMES : FOX_ETF_NAMES).map(([sym, name]) => {
-                            const type = !isBear ? FOX_ETF_TYPE[sym] : null;
-                            const ts = type ? TYPE_STYLE[type] : null;
-                            return (
-                                <div key={sym} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-black text-gray-800 text-sm">{sym}</span>
-                                        {ts && (
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>
-                                                {type}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className="text-xs text-gray-400 text-right max-w-[140px] leading-tight">{name}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
+                    <EtfList
+                        universe={ETF_UNIVERSE[activeAgent]}
+                        typeMap={typeMapBy[activeAgent]}
+                    />
                 </div>
 
                 {/* AI 로그 */}
@@ -318,8 +453,8 @@ export default function AdminDashboard() {
                         <h3 className="text-lg font-black text-gray-800">🤖 AI 판단 로그</h3>
                         <span className="text-xs text-gray-400">최근 {logs.length}건</span>
                     </div>
-                    <div className="max-h-[400px] overflow-y-auto pr-1">
-                        <LogList logs={logs} type={isBear ? "bear" : "fox"} />
+                    <div className="max-h-[460px] overflow-y-auto pr-1">
+                        <LogList logs={logs} type={activeAgent} />
                     </div>
                 </div>
             </div>
