@@ -2,13 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 const API = "http://localhost:8000";
-const REFRESH_MS = 2000; // 2초마다 실시간 갱신
+const REFRESH_MS = 2000;
 
 function fmt(v) {
     if (v == null || v === "") return "-";
     return new Intl.NumberFormat("ko-KR").format(Number(v));
 }
-
 function fmtPct(v) {
     if (v == null || v === "") return "-";
     const n = Number(v);
@@ -21,14 +20,56 @@ const COLORS = [
     "#ec4899", "#a855f7", "#14b8a6", "#f43f5e",
 ];
 
+const ETF_NAMES = {
+    XLK: "Technology Select Sector SPDR",
+    SOXX: "iShares Semiconductor ETF",
+    XLF: "Financial Select Sector SPDR",
+    XLY: "Consumer Discretionary Select Sector SPDR",
+    XLC: "Communication Services Select Sector SPDR",
+    XLI: "Industrial Select Sector SPDR",
+    XLE: "Energy Select Sector SPDR",
+    XLB: "Materials Select Sector SPDR",
+    XLV: "Health Care Select Sector SPDR",
+    XLP: "Consumer Staples Select Sector SPDR",
+    XLU: "Utilities Select Sector SPDR",
+    XLRE: "Real Estate Select Sector SPDR",
+};
+
+/* ── SVG 헬퍼 ── */
+function polarToCartesian(cx, cy, r, deg) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function buildArc(cx, cy, outerR, innerR, startDeg, endDeg) {
+    if (endDeg - startDeg >= 359.9) endDeg = startDeg + 359.9;
+    const large = endDeg - startDeg > 180 ? 1 : 0;
+    const o1 = polarToCartesian(cx, cy, outerR, startDeg);
+    const o2 = polarToCartesian(cx, cy, outerR, endDeg);
+    const i1 = polarToCartesian(cx, cy, innerR, endDeg);
+    const i2 = polarToCartesian(cx, cy, innerR, startDeg);
+    return [
+        `M ${o1.x} ${o1.y}`,
+        `A ${outerR} ${outerR} 0 ${large} 1 ${o2.x} ${o2.y}`,
+        `L ${i1.x} ${i1.y}`,
+        `A ${innerR} ${innerR} 0 ${large} 0 ${i2.x} ${i2.y}`,
+        "Z",
+    ].join(" ");
+}
+
+/* ── DonutChart ── */
 function DonutChart({ items }) {
+    const wrapRef = useRef(null);
+    const [hovered, setHovered] = useState(null); // { symbol, name, weight, color, x, y }
+
     const slices = useMemo(() => {
         const valid = items.filter((i) => Number(i.weight) > 0);
+        const total = valid.reduce((s, i) => s + Number(i.weight), 0) || 100;
         let cum = 0;
         return valid.map((item, idx) => {
-            const start = cum;
+            const startDeg = (cum / total) * 360;
             cum += Number(item.weight);
-            return { ...item, color: COLORS[idx % COLORS.length], start };
+            const endDeg = (cum / total) * 360;
+            return { ...item, color: COLORS[idx % COLORS.length], startDeg, endDeg };
         });
     }, [items]);
 
@@ -40,35 +81,147 @@ function DonutChart({ items }) {
         );
     }
 
-    const gradient = slices
-        .map((s) => `${s.color} ${s.start}% ${s.start + Number(s.weight)}%`)
-        .join(", ");
+    const CX = 100, CY = 100, OUTER = 90, INNER = 52;
+
+    const handleMove = (e, s) => {
+        const rect = wrapRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+        setHovered({
+            symbol: s.symbol,
+            name: ETF_NAMES[s.symbol] || s.symbol,
+            weight: s.weight,
+            color: s.color,
+            x: e.clientX - rect.left + 16,
+            y: e.clientY - rect.top - 12,
+        });
+    };
 
     return (
-        <div className="flex flex-col items-center gap-4">
-            <div
-                className="rounded-full flex items-center justify-center"
-                style={{ width: 200, height: 200, background: `conic-gradient(${gradient})` }}
+        <div ref={wrapRef} className="flex flex-col items-center gap-4" style={{ position: "relative" }}>
+            {/* SVG 도넛 */}
+            <svg
+                width={200}
+                height={200}
+                viewBox="0 0 200 200"
+                style={{ display: "block", overflow: "visible" }}
+                onMouseLeave={() => setHovered(null)}
             >
-                <div
-                    className="rounded-full bg-white flex flex-col items-center justify-center border border-gray-100"
-                    style={{ width: 108, height: 108 }}
-                >
-                    <span className="text-xs text-gray-400">ETF</span>
-                    <strong className="text-2xl text-gray-800">{slices.length}</strong>
+                {slices.map((s) => {
+                    const gap = slices.length > 1 ? 1.5 : 0;
+                    const isHov = hovered?.symbol === s.symbol;
+                    return (
+                        <path
+                            key={s.symbol}
+                            d={buildArc(CX, CY, OUTER, INNER, s.startDeg + gap, s.endDeg - gap)}
+                            fill={s.color}
+                            opacity={hovered ? (isHov ? 1 : 0.45) : 0.85}
+                            style={{
+                                cursor: "pointer",
+                                transition: "opacity 0.15s, transform 0.15s",
+                                transformOrigin: `${CX}px ${CY}px`,
+                                transform: isHov ? "scale(1.05)" : "scale(1)",
+                            }}
+                            onMouseMove={(e) => handleMove(e, s)}
+                            onMouseEnter={(e) => handleMove(e, s)}
+                            onMouseLeave={() => setHovered(null)}
+                        />
+                    );
+                })}
+
+                {/* 가운데 흰 원 */}
+                <circle
+                    cx={CX} cy={CY} r={INNER}
+                    fill="white"
+                    stroke="#f3f4f6"
+                    strokeWidth={1}
+                    style={{ pointerEvents: "none" }}
+                />
+                {/* 가운데 텍스트 — hover 시 symbol 표시 */}
+                {hovered ? (
+                    <>
+                        <text x={CX} y={CY - 6} textAnchor="middle"
+                            fill={hovered.color} fontSize={16} fontWeight={700}
+                            style={{ pointerEvents: "none" }}>
+                            {hovered.symbol}
+                        </text>
+                        <text x={CX} y={CY + 14} textAnchor="middle"
+                            fill="#6b7280" fontSize={11}
+                            style={{ pointerEvents: "none" }}>
+                            {fmtPct(hovered.weight)}
+                        </text>
+                    </>
+                ) : (
+                    <>
+                        <text x={CX} y={CY - 6} textAnchor="middle"
+                            fill="#9ca3af" fontSize={12}
+                            style={{ pointerEvents: "none" }}>
+                            ETF
+                        </text>
+                        <text x={CX} y={CY + 18} textAnchor="middle"
+                            fill="#1f2937" fontSize={26} fontWeight={700}
+                            style={{ pointerEvents: "none" }}>
+                            {slices.length}
+                        </text>
+                    </>
+                )}
+            </svg>
+
+            {/* Floating Tooltip — 커서 옆에 따라다님 */}
+            {hovered && (
+                <div style={{
+                    position: "absolute",
+                    left: hovered.x,
+                    top: hovered.y,
+                    pointerEvents: "none",
+                    zIndex: 999,
+                    background: "rgba(17,24,39,0.95)",
+                    border: `1px solid ${hovered.color}66`,
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    boxShadow: `0 8px 24px rgba(0,0,0,0.25), 0 0 0 1px ${hovered.color}22`,
+                    minWidth: 190,
+                    backdropFilter: "blur(6px)",
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        <span style={{
+                            width: 10, height: 10, borderRadius: "50%",
+                            background: hovered.color, display: "inline-block", flexShrink: 0,
+                        }} />
+                        <span style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{hovered.symbol}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 5, lineHeight: 1.4 }}>
+                        {hovered.name}
+                    </div>
+                    <div style={{ fontSize: 13, color: hovered.color, fontWeight: 700 }}>
+                        비중 {fmtPct(hovered.weight)}
+                    </div>
                 </div>
-            </div>
+            )}
+
+            {/* 범례 */}
             <div className="w-full flex flex-col gap-2">
                 {slices.map((s) => (
-                    <div key={s.symbol} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50">
+                    <div
+                        key={s.symbol}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
+                        style={{
+                            background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
+                            border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
+                            cursor: "pointer",
+                        }}
+                        onMouseEnter={() => setHovered({
+                            symbol: s.symbol,
+                            name: ETF_NAMES[s.symbol] || s.symbol,
+                            weight: s.weight,
+                            color: s.color,
+                            x: 220, y: 10,
+                        })}
+                        onMouseLeave={() => setHovered(null)}
+                    >
                         <div className="flex items-center gap-2">
-                            <span
-                                className="inline-block rounded-full"
-                                style={{ width: 10, height: 10, background: s.color }}
-                            />
+                            <span className="inline-block rounded-full" style={{ width: 10, height: 10, background: s.color }} />
                             <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
                         </div>
-                        <span className="text-sm font-bold text-gray-800">{fmtPct(s.weight)}</span>
+                        <span className="text-sm font-bold" style={{ color: s.color }}>{fmtPct(s.weight)}</span>
                     </div>
                 ))}
             </div>
@@ -76,6 +229,7 @@ function DonutChart({ items }) {
     );
 }
 
+/* ── IndustryBearDetail (나머지는 기존 그대로) ── */
 function IndustryBearDetail() {
     const [logs, setLogs] = useState([]);
     const [portfolioData, setPortfolioData] = useState({
@@ -120,7 +274,6 @@ function IndustryBearDetail() {
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-10">
 
-            {/* 상단 2열 */}
             <div className="flex gap-8 items-start mb-8">
 
                 {/* 왼쪽: 로고 + 자금현황 */}
@@ -139,29 +292,18 @@ function IndustryBearDetail() {
                     </div>
 
                     <div className="flex flex-col gap-3">
-
-                        {/* 실시간 수익률 — 변동 시 flash */}
-                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"
-                            }`}>
+                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
-                            <p className={`text-xl font-black transition-all duration-300 ${profit_rate > 0 ? "text-green-500"
-                                : profit_rate < 0 ? "text-red-400"
-                                    : "text-gray-800"
-                                }`}>
+                            <p className={`text-xl font-black transition-all duration-300 ${profit_rate > 0 ? "text-green-500" : profit_rate < 0 ? "text-red-400" : "text-gray-800"}`}>
                                 {profit_rate != null ? fmtPct(profit_rate) : "-"}
                             </p>
                         </div>
-
-                        {/* 총 자산 */}
-                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"
-                            }`}>
+                        <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">총 자산</p>
                             <p className="text-xl font-black text-gray-800">
                                 {total_asset != null ? `$${fmt(total_asset)}` : "-"}
                             </p>
                         </div>
-
-                        {/* 보유 현금 */}
                         <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                             <p className="text-xs text-gray-400 mb-1">보유 현금</p>
                             <p className="text-xl font-black text-gray-800">
@@ -170,13 +312,10 @@ function IndustryBearDetail() {
                         </div>
                     </div>
 
-                    {/* 갱신 시각 + 라이브 인디케이터 */}
                     {lastUpdated && (
                         <div className="flex items-center justify-center gap-2">
                             <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                            <p className="text-xs text-gray-300">
-                                {lastUpdated} 기준
-                            </p>
+                            <p className="text-xs text-gray-300">{lastUpdated} 기준</p>
                         </div>
                     )}
                 </div>
@@ -217,11 +356,7 @@ function IndustryBearDetail() {
                                                 {
                                                     label: "수익률",
                                                     value: fmtPct(item.profit_rate),
-                                                    color: item.profit_rate > 0
-                                                        ? "text-green-500"
-                                                        : item.profit_rate < 0
-                                                            ? "text-red-400"
-                                                            : "text-gray-800",
+                                                    color: item.profit_rate > 0 ? "text-green-500" : item.profit_rate < 0 ? "text-red-400" : "text-gray-800",
                                                 },
                                             ].map(({ label, value, color }) => (
                                                 <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">
@@ -255,10 +390,7 @@ function IndustryBearDetail() {
                             <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3">
-                                        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600"
-                                            : log.action === "SELL" ? "bg-red-100 text-red-500"
-                                                : "bg-gray-200 text-gray-500"
-                                            }`}>
+                                        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" : log.action === "SELL" ? "bg-red-100 text-red-500" : "bg-gray-200 text-gray-500"}`}>
                                             {log.action || "HOLD"}
                                         </span>
                                         <strong className="text-gray-800 font-bold">
@@ -285,6 +417,7 @@ function IndustryBearDetail() {
     );
 }
 
+/* ── AgentDetail 라우터 ── */
 function AgentDetail() {
     const { id } = useParams();
 
