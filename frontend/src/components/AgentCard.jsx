@@ -37,9 +37,9 @@ function AgentCard({ agent }) {
             </div>
 
             <div className="space-y-2">
-                <p className="text-gray-600">시장: {agent.market || "-"}</p>
-                <p className="text-gray-600">투자 스타일: {agent.style || "-"}</p>
-                <p className="text-gray-600">전략: {agent.strategy || "-"}</p>
+                <p className="text-gray-600"><span className="font-bold">시장</span>: {agent.market || "-"}</p>
+                <p className="text-gray-600"><span className="font-bold">투자 스타일</span>: {agent.style || "-"}</p>
+                <p className="text-gray-600"><span className="font-bold">전략</span>: {agent.strategy || "-"}</p>
             </div>
         </div>
     );

@@ -1,3 +1,15 @@
+# app/services/industry_bear_agent.py
+"""
+인더스트리곰 — 미국 섹터 ETF 중장기 투자 에이전트
+전략: 6개월 ~ 2년 보유 목표
+  - 손절: -20% (단기 노이즈에 흔들리지 않음)
+  - 익절: +40% (중장기 상승 사이클 충분히 포착)
+  - 리밸런싱: 월 1회 (매일 매매 X)
+  - 매수 기준: 기술 점수(SMA50/200, 3·6개월 모멘텀, RSI) + 뉴스 장기 감성
+  - 뉴스 감성: 6개월~2년 구조적 영향만 ±1점 반영 (단기 이벤트 = 0점)
+  - 신규 매수: 빈 슬롯 있을 때만
+"""
+
 import json
 import os
 import re
@@ -8,14 +20,22 @@ import yfinance as yf
 import numpy as np
 
 from app.services.llm_service import ask_llm
-from app.services.news_service import get_latest_news
+from app.services.news_service import get_latest_news, analyze_news_sentiment_longterm
 from app.services.trade_service import buy_stock, sell_stock
 
 LOG_FILE = "logs/ai_logs.json"
 CACHE_FILE = "logs/response_cache.json"
 
-# ✅ 수정 1: 하루 1회 스케줄러에 맞게 TTL을 23시간으로 변경
-CACHE_TTL_MINUTES = 23 * 60  # 1380분 (23시간)
+# ── 중장기 전략 파라미터 ────────────────────────────────
+CACHE_TTL_MINUTES = 23 * 60  # 23시간 캐시
+MAX_POSITIONS = 5  # 최대 동시 보유 ETF
+STOP_LOSS_PCT = -20.0  # 손절: -20%
+TAKE_PROFIT_PCT = 40.0  # 익절: +40%
+MIN_SCORE = 3  # 최소 점수 3/6 (기술5 + 감성1)
+MIN_HOLD_DAYS = 90  # 최소 보유 일수 90일 (조기 청산 방지)
+MIN_TRADE_CASH = 200.0  # 최소 매수 가능 현금
+REBALANCE_INTERVAL_DAYS = 25  # 월 1회 리밸런싱 간격 (일)
+LAST_RUN_FILE = "logs/bear_last_run.txt"
 
 INDUSTRY_ETFS = {
     "XLK": "Technology",
@@ -32,10 +52,45 @@ INDUSTRY_ETFS = {
     "XLB": "Materials",
 }
 
-MAX_POSITIONS = 5
-STOP_LOSS_PCT = -8.0
-TAKE_PROFIT_PCT = 15.0
-MIN_SCORE = 2
+
+# ── 월 1회 리밸런싱 주기 체크 ──────────────────────────
+def _should_rebalance() -> bool:
+    """마지막 실행일로부터 REBALANCE_INTERVAL_DAYS 이상 지났는지 확인"""
+    if not os.path.exists(LAST_RUN_FILE):
+        return True
+    try:
+        with open(LAST_RUN_FILE, "r") as f:
+            last = datetime.fromisoformat(f.read().strip())
+        return (datetime.now() - last).days >= REBALANCE_INTERVAL_DAYS
+    except Exception:
+        return True
+
+
+def _update_last_run():
+    os.makedirs("logs", exist_ok=True)
+    with open(LAST_RUN_FILE, "w") as f:
+        f.write(datetime.now().isoformat())
+
+
+# ── 보유 기간 조회 ──────────────────────────────────────
+def _get_hold_days(symbol: str) -> int:
+    """Trade 테이블에서 최초 BUY 이후 경과일 반환"""
+    from app.db.database import SessionLocal
+    from app.db.models import Trade
+
+    db = SessionLocal()
+    try:
+        first_buy = (
+            db.query(Trade)
+            .filter(Trade.symbol == symbol, Trade.action == "BUY")
+            .order_by(Trade.id.asc())
+            .first()
+        )
+        if first_buy and hasattr(first_buy, "created_at") and first_buy.created_at:
+            return (datetime.now() - first_buy.created_at).days
+        return 999  # created_at 없으면 보유 기간 충족으로 간주
+    finally:
+        db.close()
 
 
 # ── 응답 캐시 ──────────────────────────────────────────
@@ -80,36 +135,40 @@ def set_cached(key: str, parsed: dict):
     save_cache(cache)
 
 
-# ── yfinance 데이터 수집 ──────────────────────────────
-def compute_etf_scores() -> list[dict]:
+# ── ETF 점수 계산 (중장기 기준, 뉴스 감성 포함) ──────────
+def compute_etf_scores(sentiment: dict | None = None) -> list[dict]:
     """
-    각 ETF 점수 계산 (0~4점)
-    ✅ 수정 2: period="1y"로 변경하여 실제 SMA200 계산 가능하게 수정
-    기준:
-      +1 price > SMA50  (단기 상승 추세)
-      +1 price > SMA200 (장기 상승 추세 — 이제 실제 200일 사용)
-      +1 RSI 45~65      (과열/과매도 아닌 모멘텀 구간)
-      +1 1mo 수익률 > 0 (양의 모멘텀)
+    중장기 기준 ETF 점수 (0~6점)
+      +1 price > SMA50        (단기 추세)
+      +1 price > SMA200       (장기 추세 — 핵심 필터)
+      +1 3개월 수익률 > 0      (중기 모멘텀)
+      +1 6개월 수익률 > 0      (장기 모멘텀 — 핵심)
+      +1 RSI 40~70            (중장기 허용 RSI 구간)
+      +1/-1 뉴스 장기 감성     (구조적 긍정/부정만 반영)
+
+    패널티:
+      price < SMA200 이면 -1 추가 (장기 하락 추세 강력 배제)
     """
     results = []
     for symbol in INDUSTRY_ETFS:
         try:
-            # ✅ 수정 2: "3mo" → "1y" 로 변경 (SMA200 = 200봉 확보)
-            hist = yf.Ticker(symbol).history(period="1y", interval="1d")
-            if len(hist) < 50:
+            # 6개월 모멘텀 확보를 위해 2년치 데이터 사용
+            hist = yf.Ticker(symbol).history(period="2y", interval="1d")
+            if len(hist) < 60:
                 continue
 
             closes = hist["Close"].values.astype(float)
             price = round(float(closes[-1]), 2)
 
+            # SMA50
             sma50 = round(float(np.mean(closes[-50:])), 2)
 
-            # ✅ 수정 2: 200봉 이상 확보됐을 때만 진짜 SMA200 사용, 부족 시 SMA50 대체
+            # SMA200 (실제 200일 확보 시 사용, 부족 시 SMA50 대체)
             if len(closes) >= 200:
                 sma200 = round(float(np.mean(closes[-200:])), 2)
                 sma200_real = True
             else:
-                sma200 = sma50  # 데이터 부족 시 SMA50으로 대체 (명시적 처리)
+                sma200 = sma50
                 sma200_real = False
 
             # RSI(14)
@@ -118,24 +177,42 @@ def compute_etf_scores() -> list[dict]:
             loss = np.mean(np.where(delta < 0, -delta, 0))
             rsi = round(100 - 100 / (1 + gain / loss) if loss != 0 else 100.0, 1)
 
-            # 1개월 수익률 (~21 거래일)
+            # 수익률 계산
             mo1_price = float(closes[-21]) if len(closes) >= 21 else float(closes[0])
-            mo1_ret = round((price - mo1_price) / mo1_price * 100, 2)
-
-            # 3개월 수익률 (~63 거래일)
             mo3_price = float(closes[-63]) if len(closes) >= 63 else float(closes[0])
-            mo3_ret = round((price - mo3_price) / mo3_price * 100, 2)
+            mo6_price = float(closes[-126]) if len(closes) >= 126 else float(closes[0])
+            mo12_price = float(closes[-252]) if len(closes) >= 252 else float(closes[0])
 
-            # 점수 계산
+            mo1_ret = round((price - mo1_price) / mo1_price * 100, 2)
+            mo3_ret = round((price - mo3_price) / mo3_price * 100, 2)
+            mo6_ret = round((price - mo6_price) / mo6_price * 100, 2)
+            mo12_ret = round((price - mo12_price) / mo12_price * 100, 2)
+
+            # ── 기술적 점수 계산 (0~5점) ──────────────────
             score = 0
             if price > sma50:
-                score += 1
+                score += 1  # 단기 추세
             if price > sma200:
-                score += 1
-            if 45 <= rsi <= 65:
-                score += 1
-            if mo1_ret > 0:
-                score += 1
+                score += 1  # 장기 추세 (핵심)
+            if mo3_ret > 0:
+                score += 1  # 3개월 모멘텀
+            if mo6_ret > 0:
+                score += 1  # 6개월 모멘텀 (핵심)
+            if 40 <= rsi <= 70:
+                score += 1  # 중장기 RSI 구간
+
+            # SMA200 하회 패널티: 장기 하락 추세 강력 배제
+            if price < sma200:
+                score = max(0, score - 1)
+
+            # ── 뉴스 장기 감성 점수 반영 (+1 / 0 / -1) ────
+            news_score = 0
+            news_reason = "no signal"
+            if sentiment and symbol in sentiment:
+                news_score = sentiment[symbol].get("score", 0)
+                news_reason = sentiment[symbol].get("reason", "no signal")
+                # 총점에 가감 (0 미만 방지)
+                score = max(0, score + news_score)
 
             results.append(
                 {
@@ -144,17 +221,22 @@ def compute_etf_scores() -> list[dict]:
                     "price": price,
                     "sma50": sma50,
                     "sma200": sma200,
-                    "sma200_real": sma200_real,  # 진짜 200일 여부 플래그
+                    "sma200_real": sma200_real,
                     "rsi": rsi,
                     "mo1r": mo1_ret,
                     "mo3r": mo3_ret,
-                    "score": score,
+                    "mo6r": mo6_ret,
+                    "mo12r": mo12_ret,
+                    "score": score,  # 최대 6점
+                    "news_score": news_score,
+                    "news_reason": news_reason,
                 }
             )
         except Exception as e:
             print(f"[ETF 스코어 오류] {symbol}: {e}")
 
-    return sorted(results, key=lambda x: (x["score"], x["mo1r"]), reverse=True)
+    # 정렬: 총점 → 6개월 모멘텀 우선 (중장기 핵심)
+    return sorted(results, key=lambda x: (x["score"], x["mo6r"]), reverse=True)
 
 
 def get_market_state() -> dict:
@@ -163,18 +245,19 @@ def get_market_state() -> dict:
         spy_info = yf.Ticker("SPY").info
         vix = vix_info.get("regularMarketPrice", 20)
         spy_chg = spy_info.get("regularMarketChangePercent", 0)
-        regime = "RISK_OFF" if vix > 25 else "RISK_ON"
+        # 중장기 기준: VIX 30 초과만 RISK_OFF (기존 25 → 30)
+        # 단기 노이즈에 레짐이 흔들리지 않도록 임계값 상향
+        regime = "RISK_OFF" if vix > 30 else "RISK_ON"
         return {
             "vix": round(float(vix), 1),
             "spy_chg": round(float(spy_chg), 2),
             "regime": regime,
         }
-    except:
+    except Exception:
         return {"vix": 20.0, "spy_chg": 0.0, "regime": "RISK_ON"}
 
 
 def get_holdings() -> tuple[list[dict], float]:
-    """현재 보유 포지션 + 수익률 조회"""
     from app.db.database import SessionLocal
     from app.db.models import Portfolio, Account
 
@@ -195,6 +278,7 @@ def get_holdings() -> tuple[list[dict], float]:
                 pnl = round(
                     (float(cur) - item.average_price) / item.average_price * 100, 2
                 )
+                hold_days = _get_hold_days(item.symbol)
                 holdings.append(
                     {
                         "etf": item.symbol,
@@ -202,9 +286,10 @@ def get_holdings() -> tuple[list[dict], float]:
                         "avg": round(item.average_price, 2),
                         "cur": round(float(cur), 2),
                         "pnl": pnl,
+                        "hold_days": hold_days,
                     }
                 )
-            except:
+            except Exception:
                 pass
         return holdings, round(cash, 2)
     finally:
@@ -238,7 +323,7 @@ def parse_llm_response(text: str) -> dict:
         text = text[4:].strip()
     try:
         return json.loads(text)
-    except:
+    except Exception:
         pass
 
     def rx(pattern):
@@ -249,11 +334,11 @@ def parse_llm_response(text: str) -> dict:
     sells_raw = rx(r'"sells"\s*:\s*(\[[^\]]*\])')
     try:
         buys = json.loads(buys_raw) if buys_raw else []
-    except:
+    except Exception:
         buys = []
     try:
         sells = json.loads(sells_raw) if sells_raw else []
-    except:
+    except Exception:
         sells = []
     return {
         "buys": buys,
@@ -264,36 +349,122 @@ def parse_llm_response(text: str) -> dict:
 
 # ── 메인 에이전트 ──────────────────────────────────────
 def run_industry_bear():
-    print("\n=== 인더스트리곰 실행 ===\n")
+    print("\n=== 인더스트리곰 (중장기) 실행 ===\n")
 
-    # 1. 데이터 수집
-    etf_scores = compute_etf_scores()
-    market = get_market_state()
-    news = get_latest_news()
     holdings, cash = get_holdings()
+    trade_results = []
+
+    # ─────────────────────────────────────────────────────
+    # STEP 1: 손절 / 익절 체크 (매일 실행 — 리밸런싱 주기 무관)
+    #   손절 -20%: 보유 기간 무관 즉시 실행
+    #   익절 +40%: MIN_HOLD_DAYS(90일) 이상 보유 시에만 실행
+    # ─────────────────────────────────────────────────────
+    print("[STEP 1] 손절/익절 체크")
+    for h in holdings:
+        hold_days = h.get("hold_days", 999)
+
+        if h["pnl"] <= STOP_LOSS_PCT:
+            r = sell_stock(h["etf"], h["qty"])
+            msg = f"[손절] {h['etf']} {h['pnl']}% (보유 {hold_days}일) → {r.get('message')}"
+            print(msg)
+            trade_results.append(msg)
+
+        elif h["pnl"] >= TAKE_PROFIT_PCT:
+            if hold_days >= MIN_HOLD_DAYS:
+                r = sell_stock(h["etf"], h["qty"])
+                msg = f"[익절] {h['etf']} {h['pnl']}% (보유 {hold_days}일) → {r.get('message')}"
+                print(msg)
+                trade_results.append(msg)
+            else:
+                msg = (
+                    f"[익절 보류] {h['etf']} {h['pnl']}% — "
+                    f"최소 보유 {MIN_HOLD_DAYS}일 미달 ({hold_days}일)"
+                )
+                print(msg)
+                trade_results.append(msg)
+
+    # ─────────────────────────────────────────────────────
+    # STEP 2: 월 1회 리밸런싱 주기 확인
+    #   미도달 시 손절/익절 결과만 로그 저장 후 종료
+    # ─────────────────────────────────────────────────────
+    if not _should_rebalance():
+        print(
+            f"[리밸런싱 건너뜀] 마지막 실행으로부터 {REBALANCE_INTERVAL_DAYS}일 미경과"
+        )
+        save_log(
+            {
+                "agent": "인더스트리곰",
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "action": "SKIP_REBALANCE",
+                "trade_results": trade_results,
+                "note": "월 1회 리밸런싱 주기 미도달 — 손절/익절만 체크",
+            }
+        )
+        return {"skipped": True, "trade_results": trade_results}
+
+    print("[STEP 2] 월 1회 리밸런싱 시작")
+    _update_last_run()
+
+    # ─────────────────────────────────────────────────────
+    # STEP 3: 데이터 수집
+    #   뉴스 장기 감성 먼저 분석 → ETF 점수에 반영
+    # ─────────────────────────────────────────────────────
+    print("[STEP 3] 뉴스 장기 감성 분석 + ETF 점수 계산")
+
+    # 헤드라인 3개씩 수집
+    raw_news = get_latest_news(max_per_symbol=3)
+
+    # 장기 구조적 영향 감성 분석 (6개월~2년 기준)
+    print("  → 감성 분석 중 (단기 이벤트 제외, 구조적 변화만 반영)...")
+    sentiment = analyze_news_sentiment_longterm(
+        news=raw_news,
+        symbols=list(INDUSTRY_ETFS.keys()),
+    )
+
+    # 감성 결과 출력 (중립(0) 제외, 신호 있는 것만)
+    for sym, s in sentiment.items():
+        if s["score"] != 0:
+            label = "📈 장기긍정" if s["score"] > 0 else "📉 장기부정"
+            print(f"  {sym} {label}: {s['reason']}")
+
+    # 감성 점수 반영된 ETF 점수 계산
+    etf_scores = compute_etf_scores(sentiment=sentiment)
+    market = get_market_state()
+    holdings, cash = get_holdings()  # STEP 1 손절/익절 반영 후 재조회
 
     print(f"[시장] VIX={market['vix']} regime={market['regime']}")
     print(f"[보유] {len(holdings)}개 포지션, 현금 ${cash:,.0f}")
 
-    # ── 자동 손절/익절 (LLM 없이 즉시 실행) ──────────────
-    for h in holdings:
-        if h["pnl"] <= STOP_LOSS_PCT:
-            r = sell_stock(h["etf"], h["qty"])
-            print(f"[손절] {h['etf']} {h['pnl']}% → {r.get('message')}")
-        elif h["pnl"] >= TAKE_PROFIT_PCT:
-            r = sell_stock(h["etf"], h["qty"])
-            print(f"[익절] {h['etf']} {h['pnl']}% → {r.get('message')}")
-
-    # 손절/익절 후 포지션 재조회
-    holdings, cash = get_holdings()
     current_symbols = {h["etf"] for h in holdings}
     available_slots = MAX_POSITIONS - len(current_symbols)
-
-    # ✅ 수정 3: 현금 부족 시 매수 슬롯 조기 종료 — 현금 0이면 LLM 호출 자체를 건너뜀
-    MIN_TRADE_CASH = 100.0  # ETF 1주 최소 매수 가능 현금 기준
     cash_sufficient = cash >= MIN_TRADE_CASH
 
-    # ── 매수 후보 필터링 ──────────────────────────────────
+    # ─────────────────────────────────────────────────────
+    # STEP 4: SMA200 장기 하락 추세 포지션 교체 검토
+    #   조건: 현재가 < SMA200 AND 3개월 수익률 < -5%
+    #         AND 보유 90일 이상
+    # ─────────────────────────────────────────────────────
+    print("[STEP 4] SMA200 장기 하락 추세 체크")
+    sma200_weak = set()
+    score_map = {e["etf"]: e for e in etf_scores}
+
+    for h in holdings:
+        info = score_map.get(h["etf"])
+        hold_days = h.get("hold_days", 999)
+        if info and info["price"] < info["sma200"] and info["mo3r"] < -5.0:
+            if hold_days >= MIN_HOLD_DAYS:
+                sma200_weak.add(h["etf"])
+                print(
+                    f"  → {h['etf']}: SMA200 하회 + 3mo={info['mo3r']}% "
+                    f"(보유 {hold_days}일) — 매도 후보"
+                )
+
+    # ─────────────────────────────────────────────────────
+    # STEP 5: 매수 후보 필터링 (중장기 기준)
+    #   - MIN_SCORE 3/6 이상
+    #   - RISK_OFF(VIX>30) 시 방어 섹터(XLP/XLU/XLV)만 허용
+    #   - 이미 보유 중인 ETF 제외
+    # ─────────────────────────────────────────────────────
     defensive = {"XLP", "XLU", "XLV"}
     candidates = []
     for e in etf_scores:
@@ -305,14 +476,20 @@ def run_industry_bear():
             continue
         candidates.append(e)
 
-    top_candidates = candidates[:8]
+    top_candidates = candidates[:6]  # 상위 6개만 LLM에 전달
 
-    # ── 응답 캐시 확인 ────────────────────────────────────
+    # ─────────────────────────────────────────────────────
+    # STEP 6: LLM 최종 판단 (캐시 우선)
+    # ─────────────────────────────────────────────────────
     cache_input = json.dumps(
         {
             "market": market,
-            "top": [(e["etf"], e["score"], e["mo1r"]) for e in top_candidates],
-            "holdings": [(h["etf"], h["pnl"]) for h in holdings],
+            "top": [
+                (e["etf"], e["score"], e["mo3r"], e["mo6r"], e["news_score"])
+                for e in top_candidates
+            ],
+            "holdings": [(h["etf"], h["pnl"], h.get("hold_days", 0)) for h in holdings],
+            "weak": list(sma200_weak),
         },
         sort_keys=True,
     )
@@ -329,51 +506,68 @@ def run_industry_bear():
             "model": "cache",
         }
     else:
-        # ── 프롬프트 구성 ─────────────────────────────────
+        # 후보 ETF 행 (기술 점수 + 감성 포함)
         etf_rows = "\n".join(
-            f"{e['etf']}|{e['score']}/4|RSI:{e['rsi']}|1m:{e['mo1r']}%|3m:{e['mo3r']}%"
+            f"{e['etf']}|{e['score']}/6|RSI:{e['rsi']}"
+            f"|3m:{e['mo3r']}%|6m:{e['mo6r']}%|12m:{e['mo12r']}%"
+            f"|news:{e['news_score']:+d}({e['news_reason']})"
             for e in top_candidates
         )
+
         holding_rows = (
             "\n".join(
-                f"{h['etf']}|avg:{h['avg']}|cur:{h['cur']}|pnl:{h['pnl']}%"
+                f"{h['etf']}|avg:{h['avg']}|cur:{h['cur']}"
+                f"|pnl:{h['pnl']}%|held:{h.get('hold_days', 0)}d"
                 for h in holdings
             )
             or "none"
         )
-        news_rows = (
+
+        # 감성 분석 결과 전체 요약 (매도 판단용)
+        sentiment_rows = (
             "\n".join(
-                f"{sym}:{title}"
-                for sym, title in news.items()
-                if sym in {e["etf"] for e in top_candidates}
+                f"{sym}|{s['score']:+d}|{s['reason']}"
+                for sym, s in sentiment.items()
+                if s["score"] != 0
             )
             or "none"
         )
 
-        system_prompt = (
-            "You are a US sector ETF quant. "
-            "Analyze data and return ONLY compact JSON. No prose.\n"
-            "Rules: max_buys=5, equal_weight, "
-            f"stop_loss={STOP_LOSS_PCT}%, take_profit={TAKE_PROFIT_PCT}%, "
-            "min_score=2/4, prefer momentum+trend alignment.\n"
-            "Output schema (keep it minimal):\n"
-            '{"buys":["XLK","XLV"],"sells":[],"note":"<15 words"}'
-        )
+        weak_rows = ", ".join(sma200_weak) if sma200_weak else "none"
 
-        # ✅ 수정 3: 현금 부족 시 buys 금지 지시 추가
         cash_note = (
             f"CASH=${cash:.0f} (insufficient — do NOT suggest any buys)"
             if not cash_sufficient
             else f"CASH=${cash:.0f}"
         )
 
+        system_prompt = (
+            "You are a long-term US sector ETF portfolio manager (6mo~2yr horizon). "
+            "You combine technical scores AND long-term news sentiment to make decisions.\n\n"
+            "Score breakdown: max 6pts "
+            "(SMA50+SMA200+3mo_mom+6mo_mom+RSI + news_longterm_sentiment)\n"
+            f"Rules: max_positions={MAX_POSITIONS}, equal_weight, "
+            f"stop_loss={STOP_LOSS_PCT}%, take_profit={TAKE_PROFIT_PCT}%, "
+            f"min_score={MIN_SCORE}/6, min_hold={MIN_HOLD_DAYS}d.\n\n"
+            "News sentiment note: scores are STRUCTURAL LONG-TERM only "
+            "(+1=secular tailwind, 0=short-term/neutral, -1=secular headwind). "
+            "Weight news_score heavily in your decision.\n\n"
+            "Do NOT sell unless: SMA200 breakdown confirmed OR "
+            "news_score=-1 with mo6r<0 (structural deterioration).\n\n"
+            'Output ONLY compact JSON: {"buys":["XLK"],"sells":[],"note":"<20 words"}'
+        )
+
         user_prompt = (
-            f"MARKET: VIX={market['vix']} SPY_chg={market['spy_chg']}% regime={market['regime']}\n"
+            f"MARKET: VIX={market['vix']} SPY_chg={market['spy_chg']}% "
+            f"regime={market['regime']}\n"
             f"SLOTS={available_slots} HELD={len(current_symbols)} {cash_note}\n\n"
-            f"CANDIDATES(etf|score|RSI|1m|3m):\n{etf_rows}\n\n"
-            f"HOLDINGS:\n{holding_rows}\n\n"
-            f"NEWS:\n{news_rows}\n\n"
-            "Decide: which ETFs to BUY (max fills SLOTS), any to SELL?\n"
+            f"CANDIDATES(etf|score/6|RSI|3m|6m|12m|news_score(reason)):\n"
+            f"{etf_rows}\n\n"
+            f"HOLDINGS(etf|avg|cur|pnl|held_days):\n{holding_rows}\n\n"
+            f"SMA200_WEAK(consider selling): {weak_rows}\n\n"
+            f"LONG-TERM SENTIMENT SIGNALS:\n{sentiment_rows}\n\n"
+            "Decide: BUY new slots (favor high score + positive news sentiment), "
+            "SELL only structurally deteriorating positions.\n"
             "Reply ONLY JSON."
         )
 
@@ -382,29 +576,40 @@ def run_industry_bear():
         parsed = parse_llm_response(result["text"])
         set_cached(cache_key, parsed)
 
-    # ── 매매 실행 ──────────────────────────────────────────
+    # ─────────────────────────────────────────────────────
+    # STEP 7: 매매 실행
+    # ─────────────────────────────────────────────────────
     buys = parsed.get("buys", [])
     sells = parsed.get("sells", [])
-    trade_results = []
 
-    # 추가 매도
+    # LLM 추천 매도 (구조적 하락 포지션)
     for sym in sells:
         h = next((x for x in holdings if x["etf"] == sym), None)
         if h:
-            r = sell_stock(sym, h["qty"])
-            trade_results.append(f"SELL {sym}: {r.get('message', '')}")
-            print(f"[매도] {sym}")
+            hold_days = h.get("hold_days", 999)
+            if hold_days >= MIN_HOLD_DAYS:
+                r = sell_stock(sym, h["qty"])
+                msg = (
+                    f"[LLM매도] {sym} pnl={h['pnl']}% "
+                    f"(보유 {hold_days}일) → {r.get('message', '')}"
+                )
+                trade_results.append(msg)
+                print(msg)
+            else:
+                msg = f"[매도 보류] {sym} — 최소 보유 {MIN_HOLD_DAYS}일 미달 ({hold_days}일)"
+                trade_results.append(msg)
+                print(msg)
 
-    # 보유 수 재계산 후 균등 매수
-    holdings_after_sell, cash = get_holdings()
-    current_count = len({h["etf"] for h in holdings_after_sell})
+    # 매도 후 포지션 재조회
+    holdings_after, cash = get_holdings()
+    current_count = len({h["etf"] for h in holdings_after})
     slots = MAX_POSITIONS - current_count
 
-    buy_targets = [b for b in buys if b not in {h["etf"] for h in holdings_after_sell}][
+    buy_targets = [b for b in buys if b not in {h["etf"] for h in holdings_after}][
         :slots
     ]
 
-    # ✅ 수정 3: 현금 부족 시 매수 완전 스킵 + 이유 로그 기록
+    # 균등 매수 (현금을 슬롯 수로 나눠 배분)
     if not cash_sufficient:
         print(f"[매수 스킵] 현금 ${cash:.0f} < 최소 기준 ${MIN_TRADE_CASH:.0f}")
         trade_results.append(f"BUY SKIPPED: cash=${cash:.0f} below minimum")
@@ -417,41 +622,51 @@ def run_industry_bear():
                     info.get("preMarketPrice") or info.get("regularMarketPrice") or 1
                 )
                 qty = int(alloc_per_etf // float(price))
-                # ✅ 수정 3: qty 0 체크 + 개별 ETF가 너무 비싼 경우 로그
                 if qty <= 0:
+                    msg = (
+                        f"BUY SKIPPED {sym}: "
+                        f"alloc=${alloc_per_etf:.0f} < price=${price:.0f}"
+                    )
                     print(
                         f"[매수 스킵] {sym} — 현금 부족(할당 ${alloc_per_etf:.0f} < 현재가 ${price:.0f})"
                     )
-                    trade_results.append(
-                        f"BUY SKIPPED {sym}: alloc=${alloc_per_etf:.0f} < price=${price:.0f}"
-                    )
+                    trade_results.append(msg)
                     continue
                 r = buy_stock(sym, quantity=qty)
-                trade_results.append(f"BUY {sym} x{qty}: {r.get('message', '')}")
-                print(f"[매수] {sym} x{qty}")
+                msg = f"BUY {sym} x{qty}: {r.get('message', '')}"
+                trade_results.append(msg)
+                print(f"[매수] {sym} x{qty} — 중장기 편입")
             except Exception as e:
                 print(f"[매수 오류] {sym}: {e}")
                 trade_results.append(f"BUY ERROR {sym}: {e}")
 
-    # ── 로그 저장 ──────────────────────────────────────────
+    # ─────────────────────────────────────────────────────
+    # STEP 8: 로그 저장
+    # ─────────────────────────────────────────────────────
     save_log(
         {
             "agent": "인더스트리곰",
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "strategy": "중장기 (6mo~2yr)",
             "regime": market["regime"],
             "vix": market["vix"],
             "buys": buys,
             "sells": sells,
+            "sma200_weak": list(sma200_weak),
             "trade_results": trade_results,
             "note": parsed.get("note", ""),
+            "sentiment_signals": {
+                sym: s for sym, s in sentiment.items() if s["score"] != 0
+            },
             "input_tokens": result.get("input_tokens", 0),
             "output_tokens": result.get("output_tokens", 0),
             "total_tokens": result.get("total_tokens", 0),
             "model": result.get("model", ""),
-            # ✅ 수정 2: SMA200 실제 계산 여부 기록
             "sma200_real_count": sum(
                 1 for e in etf_scores if e.get("sma200_real", False)
             ),
+            "rebalance": True,
         }
     )
+
     return parsed

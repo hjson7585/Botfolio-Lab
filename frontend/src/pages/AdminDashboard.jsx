@@ -9,18 +9,18 @@ const TOKEN_COLORS = ["#3B82F6", "#10B981"];
 ───────────────────────────────────────────────────────────── */
 const PARAMS = {
     bear: [
-        ["전략 유형", "산업 사이클 섹터 로테이션"],
-        ["투자 기간", "제한 없음 (장기 보유)"],
-        ["실행 주기", "매일 오전 10:31 ET (장 마감 후)"],
+        ["전략 유형", "섹터 ETF 중장기 로테이션 (6개월~2년)"],
+        ["투자 기간", "6개월 ~ 2년 (최소 보유 90일)"],
+        ["실행 주기", "손절/익절 매일 체크 · 리밸런싱 월 1회"],
         ["ETF 유니버스", "12개 섹터 ETF"],
-        ["최대 보유 종목", "3종목"],
-        ["종목당 비중", "포트폴리오의 최대 33%"],
-        ["진입 조건", "섹터 스코어 상위 + MA50 위 + RSI 40~65"],
-        ["AI 모델", "deepseek"],
-        ["토큰 절감", "상위 후보 3개만 LLM 전달"],
-        ["손절 기준", "-10.0% (평균 단가 대비)"],
-        ["익절 기준", "없음 — 사이클 반전 시 매도"],
-        ["리밸런싱", "스코어 역전 시 하위 종목 교체"],
+        ["최대 보유 종목", "5종목"],
+        ["종목당 비중", "현금 균등 배분 (포트폴리오의 최대 20%)"],
+        ["진입 조건", "점수 3/6↑ · SMA50/200 정배열 · 3·6개월 모멘텀 · 뉴스 장기 감성"],
+        ["AI 모델", "deepseek (뉴스 감성 분석 + 최종 매매 판단)"],
+        ["토큰 절감", "감성 캐시 23h · 후보 상위 6개만 LLM 전달"],
+        ["손절 기준", "-20.0% (보유 기간 무관 즉시 실행)"],
+        ["익절 기준", "+40.0% (최소 90일 보유 후 실행)"],
+        ["리밸런싱", "SMA200 하회 + 3개월 -5% 시 구조적 교체"],
     ],
     fox: [
         ["전략 유형", "단기 모멘텀 + 시장 레짐 필터"],
@@ -243,8 +243,8 @@ function LogList({ logs, type }) {
                         <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`text-xs font-bold px-3 py-1 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                    log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                        "bg-gray-200 text-gray-500"}`}>
+                                        log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                            "bg-gray-200 text-gray-500"}`}>
                                     {log.action || "HOLD"}
                                 </span>
                                 <strong className="text-sm text-gray-700">
@@ -271,35 +271,76 @@ function LogList({ logs, type }) {
         );
     }
 
-    // bear
+    // bear — 새 로그 구조 반영 (buys/sells/sma200_weak/sentiment_signals)
     return (
         <div className="flex flex-col gap-3">
-            {logs.map((log, i) => (
-                <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                    "bg-gray-200 text-gray-500"}`}>
-                                {log.action || "HOLD"}
-                            </span>
-                            <strong className="text-sm text-gray-700">
-                                {log.selected_etf && log.selected_etf !== "NONE" ? log.selected_etf : "-"}
-                            </strong>
-                            {log.sector && log.sector !== "NONE" && (
-                                <span className="text-xs text-gray-400">{log.sector}</span>
-                            )}
+            {logs.map((log, i) => {
+                const hasBuy = log.buys?.length > 0;
+                const hasSell = log.sells?.length > 0;
+                const isSkip = log.action === "SKIP_REBALANCE";
+                const action = isSkip
+                    ? "SKIP"
+                    : hasBuy && hasSell ? "REBAL"
+                        : hasBuy ? "BUY"
+                            : hasSell ? "SELL"
+                                : "HOLD";
+                const cls = {
+                    BUY: "bg-green-100 text-green-600",
+                    SELL: "bg-red-100 text-red-500",
+                    REBAL: "bg-blue-100 text-blue-600",
+                    HOLD: "bg-gray-200 text-gray-500",
+                    SKIP: "bg-gray-100 text-gray-400",
+                }[action];
+
+                // 뉴스 감성 신호 요약
+                const sentimentEntries = log.sentiment_signals
+                    ? Object.entries(log.sentiment_signals)
+                    : [];
+
+                return (
+                    <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs font-bold px-3 py-1 rounded-full ${cls}`}>
+                                    {action}
+                                </span>
+                                {hasBuy && <span className="text-xs font-bold text-green-600">매수: {log.buys.join(", ")}</span>}
+                                {hasSell && <span className="text-xs font-bold text-red-500">매도: {log.sells.join(", ")}</span>}
+                                {log.regime && <span className="text-xs text-gray-400">{log.regime}</span>}
+                                {log.sma200_weak?.length > 0 && (
+                                    <span className="text-xs text-orange-400">
+                                        SMA200↓ {log.sma200_weak.join(", ")}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
                         </div>
-                        <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
+
+                        {/* 뉴스 장기 감성 신호 */}
+                        {sentimentEntries.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                                {sentimentEntries.map(([sym, s]) => (
+                                    <span key={sym}
+                                        className={`text-xs font-bold px-2 py-0.5 rounded-full
+                                            ${s.score > 0
+                                                ? "bg-green-50 text-green-600"
+                                                : "bg-red-50 text-red-500"}`}>
+                                        {s.score > 0 ? "📈" : "📉"} {sym}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {log.note && <p className="text-xs text-gray-500 mb-1 italic">"{log.note}"</p>}
+                        <div className="flex gap-3 text-xs text-gray-300">
+                            <span>모델: {log.model || "-"}</span>
+                            <span>토큰: {log.total_tokens ?? "-"}</span>
+                            {log.vix && <span>VIX: {log.vix}</span>}
+                            {log.strategy && <span>{log.strategy}</span>}
+                        </div>
                     </div>
-                    <p className="text-xs text-gray-500 mb-1">{log.reason || "-"}</p>
-                    <div className="flex gap-3 text-xs text-gray-300">
-                        <span>모델: {log.model || "-"}</span>
-                        <span>토큰: {log.total_tokens ?? "-"}</span>
-                        {log.trade_result && <span>매매결과: {log.trade_result}</span>}
-                    </div>
-                </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
