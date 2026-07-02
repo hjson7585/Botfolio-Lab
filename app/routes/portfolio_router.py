@@ -355,3 +355,27 @@ def get_turtle_dividend():
 
     finally:
         db.close()
+
+
+# ── 기존 코드 맨 아래에 추가 ──
+
+
+def get_bear_portfolio_internal():
+    """bear 포트폴리오 내부 호출용 (라우터 없이 직접 호출 가능)"""
+    db = SessionLocal()
+    try:
+        account = (
+            db.query(Account).filter(Account.agent == "bear").first()
+            or db.query(Account).first()
+        )
+        cash = account.cash if account else 0
+
+        bear_exclude = set(TURTLE_ETFS) | set(FOX_ETFS)
+        all_items = db.query(Portfolio).all()
+        items = [i for i in all_items if getattr(i, "agent", None) == "bear"]
+        if not items:
+            items = [i for i in all_items if i.symbol not in bear_exclude]
+
+        return _build_portfolio_response(items, cash)
+    finally:
+        db.close()

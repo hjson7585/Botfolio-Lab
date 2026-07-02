@@ -5,8 +5,7 @@ import {
 } from "recharts";
 
 const API = "http://localhost:8000";
-
-const INITIAL_CAPITAL = 10_000;
+const INITIAL_CAPITAL = 10_000; // ✅ 초기 자본 $10,000
 
 const PERIOD_OPTIONS = [
     { key: "daily", label: "일별" },
@@ -70,12 +69,10 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
         return { minRate: Math.floor(min - pad), maxRate: Math.ceil(max + pad) };
     }, [chartData]);
 
-    // ✅ 카드 수치는 props로 받은 실시간 값 우선 사용 (없으면 차트 최신값 fallback)
+    // ✅ 카드 수치: props로 받은 실시간 값 우선, 없으면 차트 최신값 fallback
     const displayRate = liveRate ?? chartData.at(-1)?.profit_rate ?? 0;
     const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
-    const isPositive = displayRate >= 0;
-    // ✅ 손익 = 실시간 총자산 - 초기자본 $10,000
-    const pnl = displayAsset - INITIAL_CAPITAL;
+    const isPositive = Number(displayRate) >= 0;
 
     return (
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-8">
@@ -104,8 +101,8 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            {/* 요약 수치 카드 — 사이드바와 동일한 실시간 값 표시 */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            {/* ✅ 요약 카드: 수익률 + 총자산 2개만 (손익 카드 제거) */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
                     <p className={`text-3xl font-black ${isPositive ? "text-blue-500" : "text-red-500"}`}>
@@ -116,13 +113,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                     <p className="text-xs text-gray-400 mb-1">현재 총 자산</p>
                     <p className="text-3xl font-black text-gray-800">
                         ${Number(displayAsset).toLocaleString()}
-                    </p>
-                </div>
-                <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">손익</p>
-                    {/* ✅ 실시간 총자산 - $10,000 */}
-                    <p className={`text-3xl font-black ${pnl >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                        {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
                     </p>
                 </div>
             </div>

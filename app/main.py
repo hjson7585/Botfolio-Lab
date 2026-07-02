@@ -15,7 +15,7 @@ def _init_accounts():
     from app.db.models import Account
 
     AGENTS = ["fox", "turtle", "bear"]
-    INITIAL_CASH = 10_000.0  # ✅ $10,000
+    INITIAL_CASH = 10_000.0
 
     db = SessionLocal()
     try:
@@ -33,8 +33,10 @@ def _init_accounts():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── 서버 시작 시 실행 ──
     _init_accounts()
     yield
+    # ── 서버 종료 시 실행 (필요 시 추가) ──
 
 
 api = FastAPI(lifespan=lifespan)
