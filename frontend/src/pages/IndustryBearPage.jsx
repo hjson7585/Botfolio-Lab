@@ -12,6 +12,17 @@ function fmtPct(v) {
     const n = Number(v);
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
+// ✅ 한국 주식 관행: 양수=빨강, 음수=파랑, 0=검정
+function profitColor(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "text-gray-900";
+    return n > 0 ? "text-red-500" : "text-blue-500";
+}
+function profitBadge(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "bg-gray-100 text-gray-900";
+    return n > 0 ? "bg-red-50 text-red-500" : "bg-blue-50 text-blue-500";
+}
 
 const COLORS = [
     "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
@@ -269,9 +280,10 @@ export default function IndustryBearPage() {
                     </div>
 
                     <div className="flex flex-col gap-3">
+                        {/* ✅ 수익률 색상 수정 */}
                         <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
-                            <p className={`text-xl font-black transition-all duration-300 ${profit_rate > 0 ? "text-green-500" : profit_rate < 0 ? "text-red-400" : "text-gray-800"}`}>
+                            <p className={`text-xl font-black transition-all duration-300 ${profitColor(profit_rate)}`}>
                                 {profit_rate != null ? fmtPct(profit_rate) : "-"}
                             </p>
                         </div>
@@ -321,6 +333,7 @@ export default function IndustryBearPage() {
                                             <div>
                                                 <h3 className="text-lg font-black text-gray-800">{item.symbol}</h3>
                                             </div>
+                                            {/* ✅ 비중 뱃지는 파란색 유지 (수익률 아님) */}
                                             <span className="bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1.5 rounded-full">
                                                 {fmtPct(item.weight)}
                                             </span>
@@ -333,7 +346,8 @@ export default function IndustryBearPage() {
                                                 {
                                                     label: "수익률",
                                                     value: fmtPct(item.profit_rate),
-                                                    color: item.profit_rate > 0 ? "text-green-500" : item.profit_rate < 0 ? "text-red-400" : "text-gray-800",
+                                                    // ✅ 수익률 색상 수정
+                                                    color: profitColor(item.profit_rate),
                                                 },
                                             ].map(({ label, value, color }) => (
                                                 <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">

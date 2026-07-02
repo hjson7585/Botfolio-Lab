@@ -47,6 +47,17 @@ function fmtPct(v) {
     const n = Number(v);
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
+// ✅ 한국 주식 관행: 양수=빨강, 음수=파랑, 0=검정
+function profitColor(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "text-gray-900";
+    return n > 0 ? "text-red-500" : "text-blue-500";
+}
+function profitBadge(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "bg-gray-100 text-gray-900";
+    return n > 0 ? "bg-red-50 text-red-500" : "bg-blue-50 text-blue-500";
+}
 
 function polarToCartesian(cx, cy, r, deg) {
     const rad = ((deg - 90) * Math.PI) / 180;
@@ -313,9 +324,10 @@ export default function MomentumFoxPage() {
                     )}
 
                     <div className="flex flex-col gap-3">
+                        {/* ✅ 수익률 색상 수정 */}
                         <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
-                            <p className={`text-xl font-black transition-all duration-300 ${profit_rate > 0 ? "text-green-500" : profit_rate < 0 ? "text-red-400" : "text-gray-800"}`}>
+                            <p className={`text-xl font-black transition-all duration-300 ${profitColor(profit_rate)}`}>
                                 {profit_rate != null ? fmtPct(profit_rate) : "-"}
                             </p>
                         </div>
@@ -373,7 +385,8 @@ export default function MomentumFoxPage() {
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-0.5">{ETF_NAMES[item.symbol] || ""}</p>
                                                 </div>
-                                                <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${Number(item.profit_rate) >= 0 ? "bg-green-100 text-green-600" : "bg-red-100 text-red-500"}`}>
+                                                {/* ✅ 수익률 뱃지 색상 수정 */}
+                                                <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${profitBadge(item.profit_rate)}`}>
                                                     {fmtPct(item.profit_rate)}
                                                 </span>
                                             </div>
@@ -384,7 +397,8 @@ export default function MomentumFoxPage() {
                                                     { label: "현재가", value: `$${fmt(item.current_price)}` },
                                                     {
                                                         label: "수익률", value: fmtPct(item.profit_rate),
-                                                        color: item.profit_rate > 0 ? "text-green-500" : item.profit_rate < 0 ? "text-red-400" : "text-gray-800",
+                                                        // ✅ 수익률 색상 수정
+                                                        color: profitColor(item.profit_rate),
                                                     },
                                                 ].map(({ label, value, color }) => (
                                                     <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">
