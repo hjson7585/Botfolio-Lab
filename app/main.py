@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.ai_logs_router import router as ai_logs_router
 from app.routes.portfolio_router import router as portfolio_router  # ✅ 추가
+from app.routes.fox_logs_router import router as fox_logs_router
 
 api = FastAPI()
 
 api.include_router(ai_logs_router)
 api.include_router(portfolio_router)  # ✅ 추가
+api.include_router(fox_logs_router)
 
 api.add_middleware(
     CORSMiddleware,

@@ -21,6 +21,7 @@ import Home from "./pages/Home";
 import AgentDetail from "./pages/AgentDetail";
 import AdminDashboard from "./pages/AdminDashboard";
 import IndustryBearPage from "./IndustryBearPage"; // ✅ 추가
+import MomentumFoxPage from "./pages/MomentumFoxPage";
 
 function App() {
     const [user, setUser] = useState(null);
@@ -85,6 +86,13 @@ function App() {
                 <Route
                     path="/agent/industry-bear"
                     element={<IndustryBearPage />}
+                />
+
+
+                {/* 모멘텀여우 페이지 */}
+                <Route
+                    path="/momentum-fox"
+                    element={<MomentumFoxPage />}
                 />
 
                 {/* AI 에이전트 상세 (기타 에이전트) */}
