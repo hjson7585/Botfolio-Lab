@@ -213,7 +213,10 @@ export default function IndustryBearPage() {
                 setPortfolioData(d);
                 setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
             })
-            .catch(() => { });
+            // ✅ 수정: fetch 실패 시 초기 상태 유지 (undefined 방지)
+            .catch(() => {
+                setPortfolioData({ portfolio: [], cash: null, total_asset: null, profit_rate: null });
+            });
     };
 
     useEffect(() => {
@@ -284,10 +287,12 @@ export default function IndustryBearPage() {
                     </div>
                     <div className="flex gap-8">
                         <div className="w-56 shrink-0">
-                            <DonutChart items={portfolio} />
+                            {/* ✅ 수정: ?? [] 로 undefined 방어 */}
+                            <DonutChart items={portfolio ?? []} />
                         </div>
                         <div className="flex-1 flex flex-col gap-4">
-                            {portfolio.length === 0 ? (
+                            {/* ✅ 수정: ?? [] 로 undefined 방어 */}
+                            {(portfolio ?? []).length === 0 ? (
                                 <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
                                     보유 중인 ETF 데이터가 없습니다.
                                 </div>
@@ -321,9 +326,9 @@ export default function IndustryBearPage() {
                 </div>
             </div>
 
-            {/* ✅ 수익률 그래프 */}
+            {/* ✅ 실시간 총자산·수익률을 ProfitChart에 직접 전달 */}
             <div className="w-full">
-                <ProfitChart agent="bear" />
+                <ProfitChart agent="bear" liveAsset={total_asset} liveRate={profit_rate} />
             </div>
 
             {/* 판단 로그 */}

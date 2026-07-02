@@ -375,9 +375,9 @@ export default function MomentumFoxPage() {
                 </div>
             </div>
 
-            {/* ✅ 수익률 그래프 */}
+            {/* ✅ 실시간 총자산·수익률을 ProfitChart에 직접 전달 */}
             <div className="w-full">
-                <ProfitChart agent="fox" />
+                <ProfitChart agent="fox" liveAsset={total_asset} liveRate={profit_rate} />
             </div>
 
             {/* AI 판단 로그 */}

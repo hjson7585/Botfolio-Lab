@@ -429,11 +429,10 @@ export default function DividendTurtlePage() {
                 </div>
             </div>
 
-            {/* ✅ 수익률 그래프 */}
+            {/* ✅ 실시간 총자산·수익률을 ProfitChart에 직접 전달 */}
             <div className="w-full">
-                <ProfitChart agent="turtle" />
+                <ProfitChart agent="turtle" liveAsset={total_asset} liveRate={profit_rate} />
             </div>
-
             {/* AI 판단 로그 */}
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                 <div className="flex items-center justify-between mb-6">
@@ -451,9 +450,9 @@ export default function DividendTurtlePage() {
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
-                                                log.action === "SELL" ? "bg-red-100 text-red-500" :
-                                                    log.action === "HOLD" ? "bg-gray-200 text-gray-500" :
-                                                        "bg-teal-100 text-teal-600"}`}>
+                                            log.action === "SELL" ? "bg-red-100 text-red-500" :
+                                                log.action === "HOLD" ? "bg-gray-200 text-gray-500" :
+                                                    "bg-teal-100 text-teal-600"}`}>
                                             {log.action || "HOLD"}
                                         </span>
                                         <strong className="text-gray-800 font-bold">

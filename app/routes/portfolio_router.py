@@ -20,6 +20,21 @@ TURTLE_ETFS = {
     "NOBL",
 }
 
+FOX_ETFS = {
+    "QQQ",
+    "VGT",
+    "SOXX",
+    "SMH",
+    "SPY",
+    "VOO",
+    "IWM",
+    "MTUM",
+    "QUAL",
+    "TLT",
+    "IEF",
+    "GLD",
+}
+
 
 def get_realtime_price(symbol: str, fallback: float) -> float:
     """
@@ -59,127 +74,178 @@ def get_realtime_price(symbol: str, fallback: float) -> float:
     return round(fallback, 2)
 
 
-@router.get("/portfolio")
-def get_portfolio():
-    db = SessionLocal()
-    try:
-        items = db.query(Portfolio).all()
-        account = db.query(Account).first()
-        cash = account.cash if account else 0
+def _build_portfolio_response(items, cash):
+    """공통 포트폴리오 응답 빌더"""
+    portfolio_list = []
+    total_market_value = 0
 
-        portfolio_list = []
-        total_market_value = 0
-
-        for item in items:
-            current_price = get_realtime_price(item.symbol, item.average_price)
-            market_value = round(current_price * item.quantity, 2)
-            profit_rate = (
-                round(
-                    ((current_price - item.average_price) / item.average_price) * 100, 2
-                )
-                if item.average_price
-                else 0
-            )
-            total_market_value += market_value
-
-            portfolio_list.append(
-                {
-                    "symbol": item.symbol,
-                    "quantity": item.quantity,
-                    "avg_price": round(item.average_price, 2),
-                    "current_price": current_price,
-                    "market_value": market_value,
-                    "profit_rate": profit_rate,
-                    "weight": 0,
-                }
-            )
-
-        total_asset = round(total_market_value + cash, 2)
-
-        for p in portfolio_list:
-            p["weight"] = (
-                round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
-            )
-
-        total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
-        profit_rate_total = (
-            round(((total_market_value - total_cost) / total_cost) * 100, 2)
-            if total_cost
+    for item in items:
+        current_price = get_realtime_price(item.symbol, item.average_price)
+        market_value = round(current_price * item.quantity, 2)
+        profit_rate = (
+            round(((current_price - item.average_price) / item.average_price) * 100, 2)
+            if item.average_price
             else 0
         )
+        total_market_value += market_value
 
-        return {
-            "portfolio": portfolio_list,
-            "cash": round(cash, 2),
-            "total_asset": total_asset,
-            "total_market_value": round(total_market_value, 2),
-            "profit_rate": profit_rate_total,
-        }
+        portfolio_list.append(
+            {
+                "symbol": item.symbol,
+                "quantity": item.quantity,
+                "avg_price": round(item.average_price, 2),
+                "current_price": current_price,
+                "market_value": market_value,
+                "profit_rate": profit_rate,
+                "weight": 0,
+            }
+        )
+
+    total_asset = round(total_market_value + cash, 2)
+
+    for p in portfolio_list:
+        p["weight"] = (
+            round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
+        )
+
+    total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
+    profit_rate_total = (
+        round(((total_market_value - total_cost) / total_cost) * 100, 2)
+        if total_cost
+        else 0
+    )
+
+    return {
+        "portfolio": portfolio_list,
+        "cash": round(cash, 2),
+        "total_asset": total_asset,
+        "total_market_value": round(total_market_value, 2),
+        "profit_rate": profit_rate_total,
+    }
+
+
+@router.get("/portfolio")
+def get_portfolio():
+    """인더스트리곰 전용 (bear)"""
+    db = SessionLocal()
+    try:
+        # ✅ agent='bear' 계좌 우선, 없으면 첫 번째 계좌 (하위 호환)
+        account = (
+            db.query(Account).filter(Account.agent == "bear").first()
+            or db.query(Account).first()
+        )
+        cash = account.cash if account else 0
+
+        items = (
+            db.query(Portfolio)
+            .filter((Portfolio.agent == "bear") | (Portfolio.agent == None))
+            .all()
+        )
+
+        # agent 컬럼 없는 기존 데이터 제외 (FOX/TURTLE ETF가 아닌 것)
+        bear_symbols = set(TURTLE_ETFS) | set(FOX_ETFS)
+        items = [i for i in items if i.symbol not in bear_symbols] or items
+
+        return _build_portfolio_response(items, cash)
     finally:
         db.close()
 
 
-# ── 배당거북 전용 엔드포인트 ──────────────────────────────
-@router.get("/turtle-portfolio")
-def get_turtle_portfolio():
-    """
-    배당거북 전용 포트폴리오
-    — 배당거북 ETF 유니버스(TURTLE_ETFS)에 속한 종목만 반환
-    """
+@router.get("/fox-portfolio")
+def get_fox_portfolio():
+    """모멘텀여우 전용 (fox) — JSON 파일 기반 포트폴리오 + DB 계좌"""
+    import json
+    from pathlib import Path
+
+    PORT_FILE = Path("logs/fox_portfolio.json")
+
     db = SessionLocal()
     try:
-        items = db.query(Portfolio).filter(Portfolio.symbol.in_(TURTLE_ETFS)).all()
-        account = db.query(Account).first()
+        # ✅ fox 전용 계좌
+        account = (
+            db.query(Account).filter(Account.agent == "fox").first()
+            or db.query(Account).first()
+        )
         cash = account.cash if account else 0
+    finally:
+        db.close()
 
-        portfolio_list = []
-        total_market_value = 0
+    # fox는 JSON 파일에 포트폴리오 저장 (momentum_fox_agent.py 방식 유지)
+    if PORT_FILE.exists():
+        try:
+            raw = json.loads(PORT_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            raw = []
+    else:
+        raw = []
 
-        for item in items:
-            current_price = get_realtime_price(item.symbol, item.average_price)
-            market_value = round(current_price * item.quantity, 2)
-            profit_rate = (
-                round(
-                    ((current_price - item.average_price) / item.average_price) * 100, 2
-                )
-                if item.average_price
-                else 0
-            )
-            total_market_value += market_value
+    portfolio_list = []
+    total_market_value = 0
 
-            portfolio_list.append(
-                {
-                    "symbol": item.symbol,
-                    "quantity": item.quantity,
-                    "avg_price": round(item.average_price, 2),
-                    "current_price": current_price,
-                    "market_value": market_value,
-                    "profit_rate": profit_rate,
-                    "weight": 0,
-                }
-            )
+    for pos in raw:
+        symbol = pos.get("symbol", "")
+        avg_price = float(pos.get("avg_price", 0))
+        quantity = int(pos.get("quantity", 1))
 
-        total_asset = round(total_market_value + cash, 2)
-
-        for p in portfolio_list:
-            p["weight"] = (
-                round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
-            )
-
-        total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
-        profit_rate_total = (
-            round(((total_market_value - total_cost) / total_cost) * 100, 2)
-            if total_cost
+        current_price = get_realtime_price(symbol, avg_price)
+        market_value = round(current_price * quantity, 2)
+        profit_rate = (
+            round(((current_price - avg_price) / avg_price) * 100, 2)
+            if avg_price
             else 0
         )
+        total_market_value += market_value
 
-        return {
-            "portfolio": portfolio_list,
-            "cash": round(cash, 2),
-            "total_asset": total_asset,
-            "total_market_value": round(total_market_value, 2),
-            "profit_rate": profit_rate_total,
-        }
+        portfolio_list.append(
+            {
+                "symbol": symbol,
+                "quantity": quantity,
+                "avg_price": round(avg_price, 2),
+                "current_price": current_price,
+                "market_value": market_value,
+                "profit_rate": profit_rate,
+                "weight": 0,
+            }
+        )
+
+    total_asset = round(total_market_value + cash, 2)
+
+    for p in portfolio_list:
+        p["weight"] = (
+            round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
+        )
+
+    total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
+    profit_rate_total = (
+        round(((total_market_value - total_cost) / total_cost) * 100, 2)
+        if total_cost
+        else 0
+    )
+
+    return {
+        "portfolio": portfolio_list,
+        "cash": round(cash, 2),
+        "total_asset": total_asset,
+        "total_market_value": round(total_market_value, 2),
+        "profit_rate": profit_rate_total,
+    }
+
+
+@router.get("/turtle-portfolio")
+def get_turtle_portfolio():
+    """배당거북 전용 (turtle)"""
+    db = SessionLocal()
+    try:
+        # ✅ turtle 전용 계좌
+        account = (
+            db.query(Account).filter(Account.agent == "turtle").first()
+            or db.query(Account).first()
+        )
+        cash = account.cash if account else 0
+
+        items = db.query(Portfolio).filter(Portfolio.symbol.in_(TURTLE_ETFS)).all()
+
+        return _build_portfolio_response(items, cash)
     finally:
         db.close()
 
@@ -201,7 +267,6 @@ def get_turtle_dividend():
         from datetime import datetime, timezone
         import pandas as pd
 
-        # 현재 보유 포트폴리오 (배당거북 ETF만)
         holdings = {
             item.symbol: item.quantity
             for item in db.query(Portfolio)
@@ -209,8 +274,6 @@ def get_turtle_dividend():
             .all()
         }
 
-        # Trade 이력에서 배당거북 ETF BUY 기록 조회
-        # 최초 매수일 기준으로 보유 시작일 결정
         buy_trades = (
             db.query(Trade)
             .filter(
@@ -220,11 +283,10 @@ def get_turtle_dividend():
             .all()
         )
 
-        # 종목별 최초 매수 시점 파악
         first_buy: dict[str, datetime] = {}
         for t in buy_trades:
             sym = t.symbol
-            # Trade 모델에 created_at 없으면 1년 전 기본값
+            # ✅ created_at 컬럼 정상 참조
             if hasattr(t, "created_at") and t.created_at:
                 ts = t.created_at
                 if ts.tzinfo is None:
@@ -238,14 +300,13 @@ def get_turtle_dividend():
                     )
                     first_buy[sym] = one_year_ago
 
-        # 배당금 계산
         dividend_by_symbol = {}
         total_dividend = 0.0
 
         for symbol, qty in holdings.items():
             try:
                 ticker = yf.Ticker(symbol)
-                divs = ticker.dividends  # pandas Series (index=날짜, value=주당배당금)
+                divs = ticker.dividends
 
                 if divs.empty:
                     dividend_by_symbol[symbol] = {
@@ -256,11 +317,9 @@ def get_turtle_dividend():
                     }
                     continue
 
-                # 타임존 통일
                 if divs.index.tzinfo is None:
                     divs.index = divs.index.tz_localize("UTC")
 
-                # 보유 시작일 이후 배당금만 필터
                 start_dt = first_buy.get(
                     symbol, pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=365)
                 )

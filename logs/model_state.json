@@ -1,14 +1,17 @@
 {
-  "deepseek/deepseek-chat": {
-    "success": 8,
-    "fail": 0
+  "bear": {
+    "holdings": {},
+    "cash": 1000.0,
+    "last_rebalance": null
   },
-  "qwen/qwen-2.5-72b-instruct": {
-    "success": 0,
-    "fail": 0
+  "fox": {
+    "holdings": {},
+    "cash": 1000.0,
+    "last_rebalance": null
   },
-  "mistralai/mixtral-8x7b-instruct": {
-    "success": 0,
-    "fail": 0
+  "turtle": {
+    "holdings": {},
+    "cash": 1000.0,
+    "last_rebalance": null
   }
 }
