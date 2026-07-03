@@ -5,7 +5,7 @@ import {
     BarChart, Bar,
 } from "recharts";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const TOKEN_COLORS = ["#3B82F6", "#10B981"];
 const AGENT_COLORS = { bear: "#3B82F6", fox: "#F59E0B", turtle: "#10B981" };
 

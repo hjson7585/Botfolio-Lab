@@ -4,7 +4,7 @@ import {
     Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const INITIAL_CAPITAL = 10_000; // ✅ 초기 자본 $10,000
 
 const PERIOD_OPTIONS = [
