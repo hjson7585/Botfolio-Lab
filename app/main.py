@@ -7,20 +7,10 @@ from app.routes.portfolio_router import router as portfolio_router
 from app.routes.fox_logs_router import router as fox_logs_router
 from app.routes.visitor_router import router as visitor_router
 from app.routes.profit_history_router import router as profit_history_router
-import os, json
-from pathlib import Path
-import firebase_admin
-from firebase_admin import credentials
 
-FIREBASE_JSON_ENV = os.getenv("FIREBASE_CREDENTIALS_JSON")
-FIREBASE_FILE_PATH = Path(__file__).resolve().parent.parent / "firebase-service-account.json"
+from app.firebase_init import init_firebase
+init_firebase()
 
-if FIREBASE_JSON_ENV and not FIREBASE_FILE_PATH.exists():
-    FIREBASE_FILE_PATH.write_text(FIREBASE_JSON_ENV, encoding="utf-8")
-
-if not firebase_admin._apps:
-    cred = credentials.Certificate(str(FIREBASE_FILE_PATH))
-    firebase_admin.initialize_app(cred)
 
 def _init_accounts():
     """서버 시작 시 에이전트별 초기 계좌가 없으면 자동 생성"""
@@ -28,7 +18,7 @@ def _init_accounts():
     from app.db.models import Account
 
     AGENTS = ["fox", "turtle", "bear"]
-    INITIAL_CASH = 10_000.0  # ✅ $10,000
+    INITIAL_CASH = 10_000.0
 
     db = SessionLocal()
     try:
