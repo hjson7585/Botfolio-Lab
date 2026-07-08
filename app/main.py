@@ -36,6 +36,11 @@ def _init_accounts():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # DB 테이블 자동 생성 (없으면 만들고, 있으면 스킵)
+    from app.db.database import engine
+    from app.db.models import Base
+    Base.metadata.create_all(bind=engine)
+    print("[DB] 테이블 생성/확인 완료")
     _init_accounts()
     yield
 
