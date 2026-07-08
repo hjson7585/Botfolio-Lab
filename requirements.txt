@@ -55,4 +55,3 @@ uvicorn==0.49.0
 websockets==16.0
 yfinance==1.4.1
 firebase-admin==7.4.0
-PYTHON_VERSION=3.11.9
