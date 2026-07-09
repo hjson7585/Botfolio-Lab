@@ -398,19 +398,21 @@ function AgentTokenLineChart({ dailyData, agentKey }) {
             </div>
         );
     return (
-        <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={48} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
-                    formatter={(v, n) => [v.toLocaleString(), n]} />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
-                <Line type="monotone" dataKey="input" name="입력 토큰" stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="output" name="출력 토큰" stroke={TOKEN_COLORS[1]} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="total" name="합계" stroke="#111827" strokeWidth={1.5} dot={false} />
-            </LineChart>
-        </ResponsiveContainer>
+        <div style={{ width: "100%", height: 200, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                <LineChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={48} />
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                        formatter={(v, n) => [v.toLocaleString(), n]} />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                    <Line type="monotone" dataKey="input" name="입력 토큰" stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="output" name="출력 토큰" stroke={TOKEN_COLORS[1]} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="total" name="합계" stroke="#111827" strokeWidth={1.5} dot={false} />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
     );
 }
 
@@ -422,20 +424,22 @@ function CombinedTokenLineChart({ combinedData }) {
             </div>
         );
     return (
-        <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={combinedData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={52} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
-                    formatter={(v, n) => [v.toLocaleString(), n]} />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
-                <Line type="monotone" dataKey="bear" name="🐻 인더스트리곰" stroke={AGENT_COLORS.bear} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="fox" name="🦊 모멘텀여우" stroke={AGENT_COLORS.fox} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="turtle" name="🐢 배당거북" stroke={AGENT_COLORS.turtle} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="total" name="전체 합계" stroke="#6b7280" strokeWidth={2} strokeDasharray="5 3" dot={false} />
-            </LineChart>
-        </ResponsiveContainer>
+        <div style={{ width: "100%", height: 240, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                <LineChart data={combinedData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={52} />
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                        formatter={(v, n) => [v.toLocaleString(), n]} />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                    <Line type="monotone" dataKey="bear" name="🐻 인더스트리곰" stroke={AGENT_COLORS.bear} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="fox" name="🦊 모멘텀여우" stroke={AGENT_COLORS.fox} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="turtle" name="🐢 배당거북" stroke={AGENT_COLORS.turtle} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="total" name="전체 합계" stroke="#6b7280" strokeWidth={2} strokeDasharray="5 3" dot={false} />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
     );
 }
 
@@ -448,24 +452,46 @@ function VisitorLineChart({ dailyData }) {
             </div>
         );
     return (
-        <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                <YAxis
-                    tick={{ fontSize: 11, fill: "#9ca3af" }}
-                    tickLine={false}
-                    axisLine={false}
-                    width={32}
-                    allowDecimals={false}
-                />
-                <Tooltip
-                    contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
-                    formatter={(v) => [`${v}명`, "방문자"]}
-                />
-                <Bar dataKey="count" name="방문자" fill="#3B82F6" radius={[6, 6, 0, 0]} maxBarSize={36} />
-            </BarChart>
-        </ResponsiveContainer>
+        <div style={{ width: "100%", height: 200, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                <BarChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                    <YAxis
+                        tick={{ fontSize: 11, fill: "#9ca3af" }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={32}
+                        allowDecimals={false}
+                    />
+                    <Tooltip
+                        contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
+                        formatter={(v) => [`${v}명`, "방문자"]}
+                    />
+                    <Bar dataKey="count" name="방문자" fill="#3B82F6" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
+/* ✅ 토큰 파이 차트 — 별도 컴포넌트로 분리, 고정 픽셀 높이 + debounce 적용 */
+function TokenPieChart({ tokenData }) {
+    return (
+        <div style={{ width: "100%", height: 200, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                <PieChart>
+                    <Pie data={tokenData} cx="50%" cy="50%"
+                        innerRadius={55} outerRadius={85}
+                        paddingAngle={5} dataKey="value">
+                        {tokenData.map((_, idx) => (
+                            <Cell key={idx} fill={TOKEN_COLORS[idx]} />
+                        ))}
+                    </Pie>
+                    <Tooltip />
+                </PieChart>
+            </ResponsiveContainer>
+        </div>
     );
 }
 
@@ -505,11 +531,10 @@ export default function AdminDashboard() {
             .then((arr) => {
                 setVisitorDaily(Array.isArray(arr) ? arr : []);
                 // 오늘 방문자
-                // 수정 — ISO 문자열에서 직접 추출 (항상 "MM/DD" 형식 보장)
                 const today = new Date();
                 const mm = String(today.getMonth() + 1).padStart(2, "0");
                 const dd = String(today.getDate()).padStart(2, "0");
-                const todayStr = `${mm}/${dd}`;  // 항상 "07/02" 형식
+                const todayStr = `${mm}/${dd}`;
                 const todayRow = arr.find((r) => r.date === todayStr);
                 setTodayVisitors(todayRow?.count || 0);
             })
@@ -639,20 +664,7 @@ export default function AdminDashboard() {
                             ))}
                         </div>
                     </div>
-                    <div className="w-full h-[200px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={tokenData} cx="50%" cy="50%"
-                                    innerRadius={55} outerRadius={85}
-                                    paddingAngle={5} dataKey="value">
-                                    {tokenData.map((_, idx) => (
-                                        <Cell key={idx} fill={TOKEN_COLORS[idx]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
+                    <TokenPieChart tokenData={tokenData} />
                     <div className="flex gap-6 justify-center mt-2">
                         {["입력 토큰", "출력 토큰"].map((label, idx) => (
                             <div key={label} className="flex items-center gap-2 text-sm">
