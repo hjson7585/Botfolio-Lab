@@ -15,8 +15,8 @@ class VisitRequest(BaseModel):
 @router.post("/visit")
 def record_visit(body: VisitRequest):
     """
-    세션당 하루 1회만 카운트.
-    같은 session_id + 같은 날짜면 중복 삽입 안 함.
+    세션당 하루 1번만 카운트.
+    같은 session_id + 같은 날짜면 중복 기입 안 함
     """
     db = SessionLocal()
     try:
@@ -43,7 +43,7 @@ def record_visit(body: VisitRequest):
 
 @router.get("/visit-count")
 def get_visit_count():
-    """누적 방문자 수 (세션 기준 중복 제거)"""
+    """전체 방문자 수 (세션 기준 중복 제거)"""
     db = SessionLocal()
     try:
         total = db.query(func.count(func.distinct(Visitor.session_id))).scalar() or 0
@@ -61,15 +61,16 @@ def get_visit_daily(days: int = 30):
     db = SessionLocal()
     try:
         since = datetime.now(timezone.utc) - timedelta(days=days)
+        day_col = cast(Visitor.visited_at, Date)
 
         rows = (
             db.query(
-                cast(Visitor.visited_at, Date).label("day"),
+                day_col.label("day"),
                 func.count(func.distinct(Visitor.session_id)).label("count"),
             )
             .filter(Visitor.visited_at >= since)
-            .group_by("day")
-            .order_by("day")
+            .group_by(day_col)
+            .order_by(day_col)
             .all()
         )
 
@@ -80,5 +81,8 @@ def get_visit_daily(days: int = 30):
             }
             for row in rows
         ]
+    except Exception as e:
+        print(f"[visit-daily 오류] {e}")
+        return []
     finally:
         db.close()
