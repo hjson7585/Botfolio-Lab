@@ -10,6 +10,8 @@ from app.routes.profit_history_router import router as profit_history_router
 
 from app.firebase_init import init_firebase
 
+from app.routes.turtle_logs_router import router as turtle_logs_router
+
 init_firebase()
 
 
@@ -54,6 +56,8 @@ api.include_router(portfolio_router)
 api.include_router(fox_logs_router)
 api.include_router(visitor_router)
 api.include_router(profit_history_router)
+api.include_router(turtle_logs_router)
+
 
 origins = [
     "http://localhost:5173",
