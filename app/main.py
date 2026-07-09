@@ -9,6 +9,7 @@ from app.routes.visitor_router import router as visitor_router
 from app.routes.profit_history_router import router as profit_history_router
 
 from app.firebase_init import init_firebase
+
 init_firebase()
 
 
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     # DB 테이블 자동 생성 (없으면 만들고, 있으면 스킵)
     from app.db.database import engine
     from app.db.models import Base
+
     Base.metadata.create_all(bind=engine)
     print("[DB] 테이블 생성/확인 완료")
     _init_accounts()
@@ -56,6 +58,7 @@ api.include_router(profit_history_router)
 origins = [
     "http://localhost:5173",
     "https://hj-two-pied.vercel.app",
+    "https://botfolio-lab-frontend.vercel.app",
 ]
 
 api.add_middleware(
