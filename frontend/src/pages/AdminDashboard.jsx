@@ -640,7 +640,7 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                     <div className="w-full h-[200px]">
-                        <ResponsiveContainer>
+                        <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie data={tokenData} cx="50%" cy="50%"
                                     innerRadius={55} outerRadius={85}
