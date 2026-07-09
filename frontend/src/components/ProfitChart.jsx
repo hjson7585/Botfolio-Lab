@@ -5,7 +5,7 @@ import {
 } from "recharts";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const INITIAL_CAPITAL = 10_000; // ✅ 초기 자본 $10,000
+const INITIAL_CAPITAL = 10_000;
 
 const PERIOD_OPTIONS = [
     { key: "daily", label: "일별" },
@@ -40,7 +40,6 @@ function CustomTooltip({ active, payload, label }) {
     );
 }
 
-// ✅ liveAsset, liveRate: 각 에이전트 페이지에서 실시간으로 전달받는 값
 export default function ProfitChart({ agent, liveAsset, liveRate }) {
     const [data, setData] = useState(null);
     const [period, setPeriod] = useState("daily");
@@ -69,7 +68,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
         return { minRate: Math.floor(min - pad), maxRate: Math.ceil(max + pad) };
     }, [chartData]);
 
-    // ✅ 카드 수치: props로 받은 실시간 값 우선, 없으면 차트 최신값 fallback
     const displayRate = liveRate ?? chartData.at(-1)?.profit_rate ?? 0;
     const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
     const isPositive = Number(displayRate) >= 0;
@@ -101,7 +99,7 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            {/* ✅ 요약 카드: 수익률 + 총자산 2개만 (손익 카드 제거) */}
+            {/* 요약 카드 */}
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
@@ -117,7 +115,7 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            {/* 차트 */}
+            {/* ✅ 차트: minWidth:0 wrapper + debounce={1} */}
             {loading ? (
                 <div className="flex items-center justify-center h-48 text-gray-300 text-sm">
                     불러오는 중...
@@ -127,46 +125,48 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                     데이터를 불러올 수 없습니다
                 </div>
             ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                    <LineChart
-                        data={
-                            chartData.length >= 2
-                                ? chartData
-                                : [
-                                    { date: "시작", profit_rate: 0, total_asset: INITIAL_CAPITAL },
-                                    { date: "현재", profit_rate: displayRate, total_asset: displayAsset },
-                                ]
-                        }
-                        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-                    >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis
-                            dataKey="date"
-                            tick={{ fontSize: 11, fill: "#9ca3af" }}
-                            tickLine={false}
-                            axisLine={false}
-                        />
-                        <YAxis
-                            domain={[minRate, maxRate]}
-                            tick={{ fontSize: 11, fill: "#9ca3af" }}
-                            tickLine={false}
-                            axisLine={false}
-                            width={48}
-                            tickFormatter={(v) => `${v}%`}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} strokeDasharray="4 3" />
-                        <Line
-                            type="monotone"
-                            dataKey="profit_rate"
-                            name="수익률"
-                            stroke={color}
-                            strokeWidth={2.5}
-                            dot={{ r: 3, fill: color, strokeWidth: 0 }}
-                            activeDot={{ r: 6, fill: color, strokeWidth: 0 }}
-                        />
-                    </LineChart>
-                </ResponsiveContainer>
+                <div style={{ width: "100%", height: 260, minWidth: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                        <LineChart
+                            data={
+                                chartData.length >= 2
+                                    ? chartData
+                                    : [
+                                        { date: "시작", profit_rate: 0, total_asset: INITIAL_CAPITAL },
+                                        { date: "현재", profit_rate: displayRate, total_asset: displayAsset },
+                                    ]
+                            }
+                            margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis
+                                dataKey="date"
+                                tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <YAxis
+                                domain={[minRate, maxRate]}
+                                tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                tickLine={false}
+                                axisLine={false}
+                                width={48}
+                                tickFormatter={(v) => `${v}%`}
+                            />
+                            <Tooltip content={<CustomTooltip />} />
+                            <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} strokeDasharray="4 3" />
+                            <Line
+                                type="monotone"
+                                dataKey="profit_rate"
+                                name="수익률"
+                                stroke={color}
+                                strokeWidth={2.5}
+                                dot={{ r: 3, fill: color, strokeWidth: 0 }}
+                                activeDot={{ r: 6, fill: color, strokeWidth: 0 }}
+                            />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
             )}
         </div>
     );

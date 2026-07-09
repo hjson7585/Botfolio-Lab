@@ -9,7 +9,6 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const TOKEN_COLORS = ["#3B82F6", "#10B981"];
 const AGENT_COLORS = { bear: "#3B82F6", fox: "#F59E0B", turtle: "#10B981" };
 
-// 수정 — localStorage (브라우저 재시작해도 유지)
 function getOrCreateSessionId() {
     const KEY = "botfolio_session_id";
     let sid = localStorage.getItem(KEY);
@@ -20,9 +19,7 @@ function getOrCreateSessionId() {
     return sid;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   전략 파라미터
-───────────────────────────────────────────────────────────── */
+/* ── 전략 파라미터 ── */
 const PARAMS = {
     bear: [
         ["전략 유형", "섹터 ETF 중장기 로테이션 (6개월~2년)"],
@@ -68,9 +65,7 @@ const PARAMS = {
     ],
 };
 
-/* ─────────────────────────────────────────────────────────────
-   ETF 유니버스
-───────────────────────────────────────────────────────────── */
+/* ── ETF 유니버스 ── */
 const ETF_UNIVERSE = {
     bear: {
         XLK: "Technology Select Sector SPDR",
@@ -156,9 +151,7 @@ const HIGHLIGHT_KEYS = {
     "리밸런싱": "text-orange-500",
 };
 
-/* ─────────────────────────────────────────────────────────────
-   유틸
-───────────────────────────────────────────────────────────── */
+/* ── 유틸 ── */
 function buildDailyTokens(logs) {
     const map = {};
     logs.forEach((log) => {
@@ -199,9 +192,7 @@ function buildCombinedDailyTokens(allLogs) {
         }));
 }
 
-/* ─────────────────────────────────────────────────────────────
-   서브 컴포넌트
-───────────────────────────────────────────────────────────── */
+/* ── 서브 컴포넌트 ── */
 function ParamTable({ params, accentBg, accentText, accentBorder }) {
     return (
         <div className={`rounded-2xl border overflow-hidden ${accentBorder}`}>
@@ -388,7 +379,8 @@ function LogList({ logs, type }) {
     );
 }
 
-/* ─── 차트 컴포넌트 ─── */
+/* ✅ 모든 차트 컴포넌트: style={{ width:"100%", height:N, minWidth:0 }} 래퍼 + debounce={1} */
+
 function AgentTokenLineChart({ dailyData, agentKey }) {
     const color = AGENT_COLORS[agentKey];
     if (!dailyData.length)
@@ -443,8 +435,7 @@ function CombinedTokenLineChart({ combinedData }) {
     );
 }
 
-/* ✅ 일별 방문자 바 + 라인 차트 */
-function VisitorLineChart({ dailyData }) {
+function VisitorBarChart({ dailyData }) {
     if (!dailyData.length)
         return (
             <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
@@ -457,13 +448,7 @@ function VisitorLineChart({ dailyData }) {
                 <BarChart data={dailyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                    <YAxis
-                        tick={{ fontSize: 11, fill: "#9ca3af" }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={32}
-                        allowDecimals={false}
-                    />
+                    <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={32} allowDecimals={false} />
                     <Tooltip
                         contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", fontSize: 12 }}
                         formatter={(v) => [`${v}명`, "방문자"]}
@@ -475,62 +460,56 @@ function VisitorLineChart({ dailyData }) {
     );
 }
 
-/* ✅ 토큰 파이 차트 — 별도 컴포넌트로 분리, 고정 픽셀 높이 + debounce 적용 */
 function TokenPieChart({ tokenData }) {
     return (
         <div style={{ width: "100%", height: 200, minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%" debounce={1}>
                 <PieChart>
-                    <Pie data={tokenData} cx="50%" cy="50%"
+                    <Pie
+                        data={tokenData}
+                        cx="50%" cy="50%"
                         innerRadius={55} outerRadius={85}
-                        paddingAngle={5} dataKey="value">
+                        paddingAngle={5}
+                        dataKey="value"
+                    >
                         {tokenData.map((_, idx) => (
                             <Cell key={idx} fill={TOKEN_COLORS[idx]} />
                         ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip formatter={(v, n) => [v.toLocaleString(), n]} />
                 </PieChart>
             </ResponsiveContainer>
         </div>
     );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   메인 컴포넌트
-───────────────────────────────────────────────────────────── */
+/* ── 메인 컴포넌트 ── */
 export default function AdminDashboard() {
     const [activeAgent, setActiveAgent] = useState("bear");
     const [allLogs, setAllLogs] = useState({ bear: [], fox: [], turtle: [] });
     const [allTokens, setAllTokens] = useState({ bear: [], fox: [], turtle: [] });
-
-    // ✅ 방문자 상태
     const [visitorTotal, setVisitorTotal] = useState(0);
     const [visitorDaily, setVisitorDaily] = useState([]);
     const [todayVisitors, setTodayVisitors] = useState(0);
 
-    /* ── 방문 기록 + 집계 로드 ── */
+    /* ── 방문자 로드 ── */
     useEffect(() => {
         const sid = getOrCreateSessionId();
-
-        // 방문 신고 (세션당 하루 1회)
         fetch(`${API}/visit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: sid }),
         }).catch(() => { });
 
-        // 누적 방문자 수
         fetch(`${API}/visit-count`)
             .then((r) => r.json())
             .then((d) => setVisitorTotal(d.total || 0))
             .catch(() => { });
 
-        // 일별 방문자 (최근 30일)
         fetch(`${API}/visit-daily?days=30`)
             .then((r) => r.json())
             .then((arr) => {
                 setVisitorDaily(Array.isArray(arr) ? arr : []);
-                // 오늘 방문자
                 const today = new Date();
                 const mm = String(today.getMonth() + 1).padStart(2, "0");
                 const dd = String(today.getDate()).padStart(2, "0");
@@ -613,13 +592,12 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── 상단 요약 카드 2열 ── */}
+            {/* ✅ grid 안에서 minWidth:0 문제 방지를 위해 각 카드에 min-w-0 추가 */}
             <div className="grid grid-cols-2 gap-8 mb-10">
 
-                {/* ✅ 방문자 카드 — 누적 + 오늘 + 일별 바차트 */}
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                {/* 방문자 카드 */}
+                <div className="min-w-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <p className="text-gray-400 mb-1 text-sm">방문자 현황</p>
-
-                    {/* 누적 + 오늘 요약 */}
                     <div className="flex items-end gap-6 mb-6">
                         <div>
                             <p className="text-xs text-gray-400 mb-1">누적 방문자</p>
@@ -634,16 +612,12 @@ export default function AdminDashboard() {
                             </p>
                         </div>
                     </div>
-
-                    {/* 일별 바차트 */}
-                    <div>
-                        <p className="text-xs text-gray-400 mb-3">일별 방문자 (최근 30일)</p>
-                        <VisitorLineChart dailyData={visitorDaily} />
-                    </div>
+                    <p className="text-xs text-gray-400 mb-3">일별 방문자 (최근 30일)</p>
+                    <VisitorBarChart dailyData={visitorDaily} />
                 </div>
 
                 {/* 토큰 파이 차트 */}
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <div className="min-w-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <h2 className="text-xl font-black text-gray-800">deepseek 토큰 사용량</h2>
@@ -676,7 +650,7 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            {/* ── 일별 토큰 라인 — 에이전트별 ── */}
+            {/* ── 일별 토큰 라인 ── */}
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-10">
                 <div className="flex items-center justify-between mb-6">
                     <div>
@@ -699,7 +673,7 @@ export default function AdminDashboard() {
                     {[
                         { label: "입력 토큰 합계", value: (tokenData[0]?.value || 0).toLocaleString(), color: "text-blue-500" },
                         { label: "출력 토큰 합계", value: (tokenData[1]?.value || 0).toLocaleString(), color: "text-emerald-500" },
-                        { label: "총 토큰", value: ((tokenData[0]?.value || 0) + (tokenData[1]?.value || 0)).toLocaleString(), color: "text-black-800" },
+                        { label: "총 토큰", value: ((tokenData[0]?.value || 0) + (tokenData[1]?.value || 0)).toLocaleString(), color: "text-gray-800" },
                     ].map(({ label, value, color }) => (
                         <div key={label} className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                             <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -712,29 +686,9 @@ export default function AdminDashboard() {
 
             {/* ── 전체 에이전트 합산 ── */}
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-10">
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h2 className="text-xl font-black text-gray-800">🔢 전체 에이전트 토큰 합산 추이</h2>
-                        <p className="text-xs text-gray-400 mt-0.5">인더스트리곰 · 모멘텀여우 · 배당거북 일별 비교</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-2xl px-5 py-3 border border-gray-100 text-right">
-                        <p className="text-xs text-gray-400">3개 에이전트 누적 합계</p>
-                        <p className="text-2xl font-black text-gray-700">{totalAllTokens.toLocaleString()}</p>
-                    </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                    {Object.entries(AGENT_META).map(([key, { label }]) => {
-                        const agentTotal = allLogs[key].reduce(
-                            (s, l) => s + (l.input_tokens || 0) + (l.output_tokens || 0), 0
-                        );
-                        return (
-                            <div key={key} className="rounded-2xl px-5 py-4 border"
-                                style={{ background: `${AGENT_COLORS[key]}10`, borderColor: `${AGENT_COLORS[key]}33` }}>
-                                <p className="text-xs font-semibold mb-1" style={{ color: AGENT_COLORS[key] }}>{label}</p>
-                                <p className="text-2xl font-black text-gray-800">{agentTotal.toLocaleString()}</p>
-                            </div>
-                        );
-                    })}
+                <div className="mb-6">
+                    <h2 className="text-xl font-black text-gray-800">📊 전체 에이전트 토큰 합산 추이</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">3개 에이전트 일별 토큰 사용량 비교</p>
                 </div>
                 <CombinedTokenLineChart combinedData={combinedDailyTokens} />
             </div>
@@ -743,17 +697,19 @@ export default function AdminDashboard() {
             <div className="flex gap-3 mb-8">
                 {Object.entries(AGENT_META).map(([key, { label, active, inactive }]) => (
                     <button key={key} onClick={() => setActiveAgent(key)}
-                        className={`px-6 py-3 rounded-2xl font-bold text-sm shadow-sm transition
+                        className={`font-bold px-6 py-3 rounded-full text-sm transition shadow-sm
                             ${activeAgent === key ? active : inactive}`}>
                         {label}
                     </button>
                 ))}
             </div>
 
-            {/* ── 3단 패널 ── */}
-            <div className="grid grid-cols-3 gap-8">
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-black text-gray-800 mb-4">⚙️ 전략 파라미터</h3>
+            {/* ── 에이전트별 상세 ── */}
+            <div className="grid grid-cols-2 gap-8 mb-10">
+
+                {/* 전략 파라미터 */}
+                <div className="min-w-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-black text-gray-800 mb-5">⚙️ 전략 파라미터</h2>
                     <ParamTable
                         params={PARAMS[activeAgent]}
                         accentBg={accent.bg}
@@ -761,19 +717,24 @@ export default function AdminDashboard() {
                         accentBorder={accent.border}
                     />
                 </div>
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-black text-gray-800 mb-4">📋 ETF 유니버스</h3>
-                    <EtfList universe={ETF_UNIVERSE[activeAgent]} typeMap={typeMapBy[activeAgent]} />
+
+                {/* ETF 유니버스 */}
+                <div className="min-w-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-black text-gray-800 mb-5">🗂 ETF 유니버스</h2>
+                    <EtfList
+                        universe={ETF_UNIVERSE[activeAgent]}
+                        typeMap={typeMapBy[activeAgent]}
+                    />
                 </div>
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-black text-gray-800">🤖 AI 판단 로그</h3>
-                        <span className="text-xs text-gray-400">최근 {logs.length}건</span>
-                    </div>
-                    <div className="max-h-[460px] overflow-y-auto pr-1">
-                        <LogList logs={logs} type={activeAgent} />
-                    </div>
+            </div>
+
+            {/* ── AI 판단 로그 ── */}
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-black text-gray-800">🤖 AI 판단 로그</h2>
+                    <span className="text-sm text-gray-400">최근 20건</span>
                 </div>
+                <LogList logs={logs} type={activeAgent} />
             </div>
         </div>
     );
