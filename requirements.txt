@@ -22,3 +22,4 @@ Jinja2
 rich
 click
 joblib
+python-dotenv
