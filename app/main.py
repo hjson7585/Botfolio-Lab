@@ -1,16 +1,14 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.routes.ai_logs_router import router as ai_logs_router
 from app.routes.portfolio_router import router as portfolio_router
 from app.routes.fox_logs_router import router as fox_logs_router
 from app.routes.visitor_router import router as visitor_router
 from app.routes.profit_history_router import router as profit_history_router
-
 from app.firebase_init import init_firebase
-
 from app.routes.turtle_logs_router import router as turtle_logs_router
+from app.scheduler import start_scheduler, stop_scheduler
 
 init_firebase()
 
@@ -46,6 +44,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("[DB] 테이블 생성/확인 완료")
     _init_accounts()
+    start_scheduler()
     yield
 
 
