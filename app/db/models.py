@@ -37,4 +37,5 @@ class Visitor(Base):
     __tablename__ = "visitors"
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, index=True)
+    ip_address = Column(String, index=True, nullable=True)
     visited_at = Column(DateTime, index=True)

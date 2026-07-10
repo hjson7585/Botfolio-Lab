@@ -10,47 +10,49 @@ router = APIRouter()
 
 
 class VisitRequest(BaseModel):
-    session_id: str  # 프론트에서 생성한 UUID v4 (기존 호환 유지)
+    session_id: str  # 프론트에서 생성한 UUID v4
 
 
 def _get_client_ip(request: Request) -> str:
-    """
-    Reverse proxy(Railway 등) 환경을 고려해
-    X-Forwarded-For 헤더 → 실제 클라이언트 IP 순으로 추출.
-    """
-    forwarded = request.headers.get("X-Forwarded-For")
+    """프록시(Render/Railway) 환경을 고려해 실제 IP 추출"""
+    forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        # "1.2.3.4, 5.6.7.8" 형태일 때 맨 앞(실제 클라이언트) IP 사용
         return forwarded.split(",")[0].strip()
-    return request.client.host
+    return request.client.host if request.client else "unknown"
 
 
 @router.post("/visit")
 def record_visit(body: VisitRequest, request: Request):
     """
-    IP당 24시간 이내 1회만 카운트.
-    같은 IP에서 24시간 이내 재방문 시 중복 기입 안 함.
-    (기존 session_id 파라미터는 프론트 호환을 위해 그대로 수신하되 집계에 사용하지 않음)
+    IP 기준 24시간 이내 1회만 카운트.
+    같은 IP가 24시간 이내에 재방문하면 중복 기입 안 함.
+    누적 방문자도 IP 기준 24시간 단위로 집계.
     """
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
-        since_24h = now - timedelta(hours=24)
+        window_start = now - timedelta(hours=24)
+        ip = _get_client_ip(request)
 
-        # ── IP 기준 24시간 이내 방문 여부 체크 ──────────────────
+        # ✅ IP 기준 24시간 이내 중복 체크
         already = (
             db.query(Visitor)
             .filter(
-                Visitor.session_id == _get_client_ip(request),  # IP를 식별자로 사용
-                Visitor.visited_at >= since_24h,
+                Visitor.ip_address == ip,
+                Visitor.visited_at >= window_start,
             )
             .first()
         )
         if already:
             return {"recorded": False, "reason": "duplicate"}
 
-        # IP를 session_id 컬럼에 저장 (스키마 변경 없이 재활용)
-        db.add(Visitor(session_id=_get_client_ip(request), visited_at=now))
+        db.add(
+            Visitor(
+                session_id=body.session_id,
+                ip_address=ip,
+                visited_at=now,
+            )
+        )
         db.commit()
         return {"recorded": True}
     finally:
@@ -59,10 +61,14 @@ def record_visit(body: VisitRequest, request: Request):
 
 @router.get("/visit-count")
 def get_visit_count():
-    """전체 방문자 수 (IP 기준 중복 제거)"""
+    """
+    누적 방문자 수.
+    같은 IP라도 날짜가 다르면 각각 1명으로 집계 (일별 고유 방문).
+    → 전체 레코드 수 = 중복 없는 24시간 단위 방문 횟수
+    """
     db = SessionLocal()
     try:
-        total = db.query(func.count(func.distinct(Visitor.session_id))).scalar() or 0
+        total = db.query(func.count(Visitor.id)).scalar() or 0
         return {"total": total}
     finally:
         db.close()
@@ -71,8 +77,10 @@ def get_visit_count():
 @router.get("/visit-daily")
 def get_visit_daily(days: int = 30):
     """
-    최근 N일 일별 방문자 수
+    최근 N일 일별 방문자 수 (UTC 기준 날짜).
     반환: [{ date: "06/28", count: 12 }, ...]
+    IP 기준 중복 제거가 record_visit에서 이미 처리되므로
+    여기서는 단순 날짜별 row 수 집계.
     """
     db = SessionLocal()
     try:
@@ -82,7 +90,7 @@ def get_visit_daily(days: int = 30):
         rows = (
             db.query(
                 day_col.label("day"),
-                func.count(func.distinct(Visitor.session_id)).label("count"),
+                func.count(Visitor.id).label("count"),
             )
             .filter(Visitor.visited_at >= since)
             .group_by(day_col)
@@ -100,5 +108,23 @@ def get_visit_daily(days: int = 30):
     except Exception as e:
         print(f"[visit-daily 오류] {e}")
         return []
+    finally:
+        db.close()
+
+
+@router.get("/visit-today")
+def get_visit_today():
+    """
+    오늘(UTC 기준) 방문자 수를 별도 엔드포인트로 제공.
+    프론트의 날짜 계산 오차를 서버에서 직접 해결.
+    """
+    db = SessionLocal()
+    try:
+        today = datetime.now(timezone.utc).date()
+        day_col = cast(Visitor.visited_at, Date)
+        count = (
+            db.query(func.count(Visitor.id)).filter(day_col == today).scalar()
+        ) or 0
+        return {"today": count}
     finally:
         db.close()

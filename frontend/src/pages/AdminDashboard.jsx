@@ -501,9 +501,24 @@ export default function AdminDashboard() {
             body: JSON.stringify({ session_id: sid }),
         }).catch(() => { });
 
+        // ✅ 누적 방문자: 서버에서 직접 집계
         fetch(`${API}/visit-count`)
             .then((r) => r.json())
             .then((d) => setVisitorTotal(d.total || 0))
+            .catch(() => { });
+
+        // ✅ 오늘 방문자: 서버의 /visit-today 엔드포인트 사용 (UTC 날짜 오차 제거)
+        fetch(`${API}/visit-today`)
+            .then((r) => r.json())
+            .then((d) => setTodayVisitors(d.today || 0))
+            .catch(() => { });
+
+        // ✅ 일별 차트 데이터
+        fetch(`${API}/visit-daily?days=30`)
+            .then((r) => r.json())
+            .then((arr) => {
+                setVisitorDaily(Array.isArray(arr) ? arr : []);
+            })
             .catch(() => { });
 
         fetch(`${API}/visit-daily?days=30`)
