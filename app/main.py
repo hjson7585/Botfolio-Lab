@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
+import json
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.ai_logs_router import router as ai_logs_router
@@ -40,15 +43,48 @@ def _init_accounts():
         db.close()
 
 
+def _cleanup_legacy_profit_history():
+    """기존 1000달러 기준으로 남아있는 수익률 히스토리 파일 정리"""
+    history_dir = Path("logs")
+    targets = ["bear", "fox", "turtle"]
+
+    for agent in targets:
+        path = history_dir / f"profit_history_{agent}.json"
+        if not path.exists():
+            continue
+
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            should_delete = False
+
+            for bucket in ["daily", "weekly", "monthly", "yearly"]:
+                rows = raw.get(bucket, []) if isinstance(raw, dict) else []
+                if not rows:
+                    continue
+
+                first_asset = rows[0].get("total_asset")
+                if first_asset is not None and float(first_asset) <= 1000.0:
+                    should_delete = True
+                    break
+
+            if should_delete:
+                path.unlink(missing_ok=True)
+                print(f"[히스토리 정리] {path.name} 삭제 완료")
+            else:
+                print(f"[히스토리 유지] {path.name}")
+        except Exception as e:
+            print(f"[히스토리 정리 스킵] {path.name}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # DB 테이블 자동 생성 (없으면 만들고, 있으면 스킵)
     from app.db.database import engine
     from app.db.models import Base
 
     Base.metadata.create_all(bind=engine)
     print("[DB] 테이블 생성/확인 완료")
     _init_accounts()
+    _cleanup_legacy_profit_history()
     start_scheduler()
     yield
     stop_scheduler()
