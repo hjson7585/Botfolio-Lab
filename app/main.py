@@ -16,7 +16,7 @@ init_firebase()
 
 
 def _init_accounts():
-    """서버 시작 시 에이전트별 계좌를 10,000달러 기준으로 강제 정렬"""
+    """서버 시작 시 에이전트별 계좌를 10,000달러 기준으로 강제 정렬 (중복 행 정리 포함)"""
     from app.db.database import SessionLocal
     from app.db.models import Account
 
@@ -26,15 +26,24 @@ def _init_accounts():
     db = SessionLocal()
     try:
         for agent in AGENTS:
-            exists = db.query(Account).filter(Account.agent == agent).first()
+            rows = db.query(Account).filter(Account.agent == agent).all()
 
-            if not exists:
+            if len(rows) == 0:
                 db.add(Account(agent=agent, cash=INITIAL_CASH))
                 print(f"[계좌 초기화] {agent} → ${INITIAL_CASH:,.0f}")
-            else:
-                before = float(exists.cash or 0)
-                exists.cash = INITIAL_CASH
+            elif len(rows) == 1:
+                before = float(rows[0].cash or 0)
+                rows[0].cash = INITIAL_CASH
                 print(f"[계좌 정렬] {agent} ${before:,.0f} → ${INITIAL_CASH:,.0f}")
+            else:
+                # ✅ 중복 행 정리: 모두 삭제 후 하나만 재생성
+                for r in rows:
+                    db.delete(r)
+                db.flush()
+                db.add(Account(agent=agent, cash=INITIAL_CASH))
+                print(
+                    f"[계좌 중복 정리] {agent} 중복 {len(rows)}건 삭제 → ${INITIAL_CASH:,.0f} 재생성"
+                )
 
         db.commit()
     finally:
