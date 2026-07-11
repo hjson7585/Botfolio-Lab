@@ -16,27 +16,26 @@ init_firebase()
 
 
 def _init_accounts():
-    """서버 시작 시 에이전트별 초기 계좌가 없으면 자동 생성,
-    기존 계좌가 초기값(1000달러)이면 10000달러로 1회 마이그레이션"""
+    """서버 시작 시 에이전트별 계좌를 10,000달러 기준으로 강제 정렬"""
     from app.db.database import SessionLocal
     from app.db.models import Account
 
     AGENTS = ["fox", "turtle", "bear"]
     INITIAL_CASH = 10_000.0
-    LEGACY_CASH = 1_000.0
 
     db = SessionLocal()
     try:
         for agent in AGENTS:
             exists = db.query(Account).filter(Account.agent == agent).first()
+
             if not exists:
                 db.add(Account(agent=agent, cash=INITIAL_CASH))
                 print(f"[계좌 초기화] {agent} → ${INITIAL_CASH:,.0f}")
-            elif exists.cash == LEGACY_CASH:
-                exists.cash = INITIAL_CASH
-                print(f"[계좌 마이그레이션] {agent} $1,000 → $10,000")
             else:
-                print(f"[계좌 확인] {agent} → 현재 잔액 ${exists.cash:,.0f}")
+                before = float(exists.cash or 0)
+                exists.cash = INITIAL_CASH
+                print(f"[계좌 정렬] {agent} ${before:,.0f} → ${INITIAL_CASH:,.0f}")
+
         db.commit()
     finally:
         db.close()
@@ -102,7 +101,6 @@ api.include_router(fox_logs_router)
 api.include_router(visitor_router)
 api.include_router(profit_history_router)
 api.include_router(turtle_logs_router)
-
 
 origins = [
     "http://localhost:5173",
