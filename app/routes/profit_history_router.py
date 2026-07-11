@@ -10,10 +10,11 @@ router = APIRouter()
 HISTORY_DIR = Path("logs")
 HISTORY_DIR.mkdir(exist_ok=True)
 
+INITIAL_CAPITAL = 10_000.0  # ✅ 초기 자본 상수
+
 
 def _get_live_total_asset(agent: str) -> float:
     """에이전트별 실시간 총자산 조회 (fallback용)"""
-    # 포트폴리오 router 함수 직접 호출
     try:
         if agent == "fox":
             from app.routes.portfolio_router import get_fox_portfolio
@@ -27,13 +28,14 @@ def _get_live_total_asset(agent: str) -> float:
             from app.routes.portfolio_router import get_bear_portfolio_internal
 
             data = get_bear_portfolio_internal()
-        return float(data.get("total_asset", 10_000.0))
+        return float(data.get("total_asset", INITIAL_CAPITAL))
     except Exception:
-        # DB에서 cash만이라도 읽기
+        # DB에서 cash만이라도 읽기 — 단, 초기 자본(10,000) 미만이면 10,000 반환
         db = SessionLocal()
         try:
             account = db.query(Account).filter(Account.agent == agent).first()
-            return float(account.cash) if account else 10_000.0
+            cash = float(account.cash) if account else INITIAL_CAPITAL
+            return max(cash, INITIAL_CAPITAL)  # ✅ 핵심 수정: 1000 → 10,000 보장
         finally:
             db.close()
 
@@ -71,7 +73,6 @@ def get_bear_portfolio():
 def get_profit_history(agent: str):
     HISTORY_FILE = HISTORY_DIR / f"profit_history_{agent}.json"
 
-    # 파일이 있으면 읽어서 반환
     if HISTORY_FILE.exists():
         try:
             raw = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
@@ -80,7 +81,7 @@ def get_profit_history(agent: str):
         except Exception:
             pass
 
-    # ✅ 파일 없으면 실시간 총자산·수익률로 fallback 구성
+    # 파일 없으면 실시간 총자산·수익률로 fallback 구성
     today = date.today().isoformat()
     live_asset = _get_live_total_asset(agent)
     live_rate = _get_live_profit_rate(agent)
