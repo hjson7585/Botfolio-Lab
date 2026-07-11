@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, ReferenceLine,
@@ -45,6 +45,9 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     const [period, setPeriod] = useState("daily");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    // ✅ 추가: 마우스 커서 위치 추적용 state
+    const [mousePos, setMousePos] = useState(null);
+    const chartWrapRef = useRef(null);
 
     const color = AGENT_COLOR[agent] || "#6b7280";
 
@@ -71,6 +74,25 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     const displayRate = liveRate ?? chartData.at(-1)?.profit_rate ?? 0;
     const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
     const isPositive = Number(displayRate) >= 0;
+
+    // ✅ 추가: 차트 영역 내 마우스 이동 시 커서 좌표 갱신
+    const handleChartMouseMove = (e) => {
+        if (!chartWrapRef.current || !e) return;
+        const rect = chartWrapRef.current.getBoundingClientRect();
+        const clientX = e.activeCoordinate?.x != null
+            ? rect.left + e.activeCoordinate.x
+            : null;
+        const clientY = e.chartY != null ? rect.top + e.chartY : null;
+        if (clientX == null || clientY == null) return;
+        setMousePos({
+            x: clientX - rect.left,
+            y: clientY - rect.top,
+        });
+    };
+
+    const handleChartMouseLeave = () => {
+        setMousePos(null);
+    };
 
     return (
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-8">
@@ -125,7 +147,7 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                     데이터를 불러올 수 없습니다
                 </div>
             ) : (
-                <div style={{ width: "100%", height: 260, minWidth: 0 }}>
+                <div ref={chartWrapRef} style={{ width: "100%", height: 260, minWidth: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%" debounce={1}>
                         <LineChart
                             data={
@@ -137,6 +159,8 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                                     ]
                             }
                             margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                            onMouseMove={handleChartMouseMove}
+                            onMouseLeave={handleChartMouseLeave}
                         >
                             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                             <XAxis
@@ -153,7 +177,12 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                                 width={48}
                                 tickFormatter={(v) => `${v}%`}
                             />
-                            <Tooltip content={<CustomTooltip />} />
+                            {/* ✅ 수정: position prop으로 마우스 커서를 따라다니도록 함 */}
+                            <Tooltip
+                                content={<CustomTooltip />}
+                                position={mousePos ? { x: mousePos.x + 16, y: mousePos.y - 12 } : undefined}
+                                cursor={{ stroke: "#e5e7eb", strokeWidth: 1 }}
+                            />
                             <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} strokeDasharray="4 3" />
                             <Line
                                 type="monotone"
