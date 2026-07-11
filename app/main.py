@@ -14,12 +14,14 @@ init_firebase()
 
 
 def _init_accounts():
-    """서버 시작 시 에이전트별 초기 계좌가 없으면 자동 생성"""
+    """서버 시작 시 에이전트별 초기 계좌가 없으면 자동 생성,
+    기존 계좌가 초기값(1000달러)이면 10000달러로 1회 마이그레이션"""
     from app.db.database import SessionLocal
     from app.db.models import Account
 
     AGENTS = ["fox", "turtle", "bear"]
     INITIAL_CASH = 10_000.0
+    LEGACY_CASH = 1_000.0  # 이전 잘못된 초기값
 
     db = SessionLocal()
     try:
@@ -28,6 +30,9 @@ def _init_accounts():
             if not exists:
                 db.add(Account(agent=agent, cash=INITIAL_CASH))
                 print(f"[계좌 초기화] {agent} → ${INITIAL_CASH:,.0f}")
+            elif exists.cash == LEGACY_CASH:
+                exists.cash = INITIAL_CASH
+                print(f"[계좌 마이그레이션] {agent} $1,000 → $10,000")
             else:
                 print(f"[계좌 확인] {agent} → 현재 잔액 ${exists.cash:,.0f}")
         db.commit()
@@ -46,6 +51,7 @@ async def lifespan(app: FastAPI):
     _init_accounts()
     start_scheduler()
     yield
+    stop_scheduler()
 
 
 api = FastAPI(lifespan=lifespan)
