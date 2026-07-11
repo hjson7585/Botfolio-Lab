@@ -1,7 +1,6 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 from pathlib import Path
 import json
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.ai_logs_router import router as ai_logs_router
@@ -24,7 +23,7 @@ def _init_accounts():
 
     AGENTS = ["fox", "turtle", "bear"]
     INITIAL_CASH = 10_000.0
-    LEGACY_CASH = 1_000.0  # 이전 잘못된 초기값
+    LEGACY_CASH = 1_000.0
 
     db = SessionLocal()
     try:
@@ -44,28 +43,33 @@ def _init_accounts():
 
 
 def _cleanup_legacy_profit_history():
-    """기존 1000달러 기준으로 남아있는 수익률 히스토리 파일 정리"""
+    """기존 1000달러 기준 수익률 히스토리 파일 자동 삭제"""
     history_dir = Path("logs")
-    targets = ["bear", "fox", "turtle"]
+    targets = ["fox", "turtle", "bear"]
 
     for agent in targets:
         path = history_dir / f"profit_history_{agent}.json"
         if not path.exists():
+            print(f"[히스토리 없음] {path.name}")
             continue
 
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             should_delete = False
 
-            for bucket in ["daily", "weekly", "monthly", "yearly"]:
-                rows = raw.get(bucket, []) if isinstance(raw, dict) else []
-                if not rows:
-                    continue
+            if isinstance(raw, dict):
+                for bucket in ["daily", "weekly", "monthly", "yearly"]:
+                    rows = raw.get(bucket, [])
+                    if not rows:
+                        continue
 
-                first_asset = rows[0].get("total_asset")
-                if first_asset is not None and float(first_asset) <= 1000.0:
-                    should_delete = True
-                    break
+                    for row in rows:
+                        asset = row.get("total_asset")
+                        if asset is not None and float(asset) <= 1000.0:
+                            should_delete = True
+                            break
+                    if should_delete:
+                        break
 
             if should_delete:
                 path.unlink(missing_ok=True)
