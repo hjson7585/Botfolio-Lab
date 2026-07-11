@@ -10,7 +10,7 @@ router = APIRouter()
 HISTORY_DIR = Path("logs")
 HISTORY_DIR.mkdir(exist_ok=True)
 
-INITIAL_CAPITAL = 10_000.0  # ✅ 초기 자본 상수
+INITIAL_CAPITAL = 10000.0  # ✅ 초기 자본 상수
 
 
 def _get_live_total_asset(agent: str) -> float:
