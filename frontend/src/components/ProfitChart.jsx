@@ -45,7 +45,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     const [period, setPeriod] = useState("daily");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
-    // ✅ 추가: 마우스 커서 위치 추적용 state
     const [mousePos, setMousePos] = useState(null);
     const chartWrapRef = useRef(null);
 
@@ -75,19 +74,13 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
     const isPositive = Number(displayRate) >= 0;
 
-    // ✅ 추가: 차트 영역 내 마우스 이동 시 커서 좌표 갱신
     const handleChartMouseMove = (e) => {
         if (!chartWrapRef.current || !e) return;
         const rect = chartWrapRef.current.getBoundingClientRect();
-        const clientX = e.activeCoordinate?.x != null
-            ? rect.left + e.activeCoordinate.x
-            : null;
+        const clientX = e.activeCoordinate?.x != null ? rect.left + e.activeCoordinate.x : null;
         const clientY = e.chartY != null ? rect.top + e.chartY : null;
         if (clientX == null || clientY == null) return;
-        setMousePos({
-            x: clientX - rect.left,
-            y: clientY - rect.top,
-        });
+        setMousePos({ x: clientX - rect.left, y: clientY - rect.top });
     };
 
     const handleChartMouseLeave = () => {
@@ -97,7 +90,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     return (
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-8">
 
-            {/* 헤더 */}
             <div className="flex items-start justify-between mb-6">
                 <div>
                     <h2 className="text-xl font-black text-gray-800">📈 실시간 수익률 추이</h2>
@@ -121,7 +113,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            {/* 요약 카드 */}
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
@@ -137,7 +128,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            {/* ✅ 차트: minWidth:0 wrapper + debounce={1} */}
             {loading ? (
                 <div className="flex items-center justify-center h-48 text-gray-300 text-sm">
                     불러오는 중...
@@ -177,7 +167,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                                 width={48}
                                 tickFormatter={(v) => `${v}%`}
                             />
-                            {/* ✅ 수정: position prop으로 마우스 커서를 따라다니도록 함 */}
                             <Tooltip
                                 content={<CustomTooltip />}
                                 position={mousePos ? { x: mousePos.x + 16, y: mousePos.y - 12 } : undefined}
