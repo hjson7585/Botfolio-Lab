@@ -13,6 +13,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 import IndustryBearPage from "./pages/IndustryBearPage";
 import MomentumFoxPage from "./pages/MomentumFoxPage";
 import DividendTurtlePage from "./pages/DividendTurtlePage";
+import AdminPage from "./pages/AdminPage";
+
 
 function App() {
     const [user, setUser] = useState(null);
@@ -55,7 +57,9 @@ function App() {
                             ? <AdminDashboard />
                             : <Navigate to="/" />
                     }
+
                 />
+                <Route path="/admin" element={<AdminPage />} />
             </Routes>
         </BrowserRouter>
     );
