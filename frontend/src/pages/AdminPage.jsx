@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const ADMIN_PASSWORD = "7585";
 
 const AGENTS = [
     { key: "bear", label: "🐻 인더스트리곰", color: "#3B82F6" },
@@ -8,6 +9,48 @@ const AGENTS = [
     { key: "turtle", label: "🐢 배당거북", color: "#10B981", disabled: true },
 ];
 
+// ── 비밀번호 입력 화면 ────────────────────────────────
+function PasswordGate({ onUnlock }) {
+    const [input, setInput] = useState("");
+    const [error, setError] = useState(false);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (input === ADMIN_PASSWORD) {
+            onUnlock();
+        } else {
+            setError(true);
+            setInput("");
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-10 shadow-sm border border-gray-100 w-80 flex flex-col gap-4">
+                <h2 className="text-xl font-black text-gray-800 text-center">🔒 관리자 인증</h2>
+                <input
+                    type="password"
+                    value={input}
+                    onChange={(e) => { setInput(e.target.value); setError(false); }}
+                    placeholder="비밀번호 입력"
+                    autoFocus
+                    className="border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-gray-400 transition"
+                />
+                {error && (
+                    <p className="text-xs text-red-500 font-semibold text-center">❌ 비밀번호가 틀렸습니다</p>
+                )}
+                <button
+                    type="submit"
+                    className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gray-800 hover:bg-gray-700 transition"
+                >
+                    확인
+                </button>
+            </form>
+        </div>
+    );
+}
+
+// ── 에이전트 카드 ─────────────────────────────────────
 function AgentCard({ agent }) {
     const [runStatus, setRunStatus] = useState(null);
     const [logStatus, setLogStatus] = useState(null);
@@ -42,8 +85,6 @@ function AgentCard({ agent }) {
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black text-gray-800 mb-4">{agent.label}</h3>
             <div className="flex flex-col gap-3">
-
-                {/* 실행 버튼 */}
                 <button
                     onClick={handleRun}
                     disabled={running || agent.disabled}
@@ -57,8 +98,6 @@ function AgentCard({ agent }) {
                         {runStatus.ok ? "✅ " : "❌ "}{runStatus.msg}
                     </p>
                 )}
-
-                {/* 로그 삭제 버튼 */}
                 <button
                     onClick={handleClearLog}
                     disabled={deleting}
@@ -71,7 +110,6 @@ function AgentCard({ agent }) {
                         {logStatus.ok ? "✅ " : "❌ "}{logStatus.msg}
                     </p>
                 )}
-
             </div>
             {agent.disabled && (
                 <p className="text-xs text-gray-400 mt-3">※ 미구현 에이전트</p>
@@ -80,7 +118,12 @@ function AgentCard({ agent }) {
     );
 }
 
+// ── 메인 페이지 ───────────────────────────────────────
 export default function AdminPage() {
+    const [unlocked, setUnlocked] = useState(false);
+
+    if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
+
     return (
         <div className="min-h-screen bg-gray-50 p-8">
             <div className="max-w-3xl mx-auto">

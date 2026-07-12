@@ -59,7 +59,7 @@ function App() {
                     }
 
                 />
-                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/admin/control" element={<AdminPage />} />
             </Routes>
         </BrowserRouter>
     );
