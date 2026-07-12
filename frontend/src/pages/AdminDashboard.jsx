@@ -4,6 +4,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Legend,
     BarChart, Bar,
 } from "recharts";
+// 파일 최상단 import에 Link 추가
+import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const TOKEN_COLORS = ["#3B82F6", "#10B981"];
@@ -601,9 +603,17 @@ export default function AdminDashboard() {
         <div className="min-h-screen bg-[#f5f7fb] p-12">
 
             {/* ── 헤더 ── */}
-            <div className="mb-10">
-                <h1 className="text-5xl font-black text-gray-800 mb-2">관리자 대시보드</h1>
-                <p className="text-gray-400 text-lg">Botfolio AI 관리자 시스템</p>
+            <div className="flex items-center justify-between mb-10">
+                <div>
+                    <h1 className="text-5xl font-black text-gray-800 mb-2">관리자 대시보드</h1>
+                    <p className="text-gray-400 text-lg">Botfolio AI 관리자 시스템</p>
+                </div>
+                <Link
+                    to="/admin/control"
+                    className="px-6 py-3 rounded-2xl text-sm font-bold text-white bg-gray-800 hover:bg-gray-700 transition shadow-sm"
+                >
+                    ⚙️ 에이전트 제어
+                </Link>
             </div>
 
             {/* ── 상단 요약 카드 2열 ── */}
