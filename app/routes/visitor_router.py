@@ -3,12 +3,15 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from google.cloud import firestore
+from firebase_admin import firestore
 
 router = APIRouter()
 
-db = firestore.Client()
 VISITOR_COLLECTION = "visitors"
+
+
+def _get_db():
+    return firestore.client()
 
 
 class VisitRequest(BaseModel):
@@ -41,16 +44,12 @@ def _to_kst(dt):
 @router.post("/visit")
 def track_visit(body: VisitRequest):
     now = datetime.now(timezone.utc)
+    db = _get_db()
     ref = db.collection(VISITOR_COLLECTION).document(body.session_id)
     snap = ref.get()
 
     if snap.exists:
-        ref.set(
-            {
-                "lastVisitedAt": now,
-            },
-            merge=True,
-        )
+        ref.set({"lastVisitedAt": now}, merge=True)
     else:
         ref.set(
             {
@@ -65,6 +64,7 @@ def track_visit(body: VisitRequest):
 
 @router.get("/visit-count")
 def visit_count():
+    db = _get_db()
     docs = db.collection(VISITOR_COLLECTION).stream()
     total = sum(1 for _ in docs)
     return {"total": total}
@@ -72,6 +72,7 @@ def visit_count():
 
 @router.get("/visit-today")
 def visit_today():
+    db = _get_db()
     docs = db.collection(VISITOR_COLLECTION).stream()
 
     kst = timezone(timedelta(hours=9))
@@ -90,6 +91,7 @@ def visit_today():
 
 @router.get("/visit-daily")
 def visit_daily(days: int = 30):
+    db = _get_db()
     docs = db.collection(VISITOR_COLLECTION).stream()
 
     kst = timezone(timedelta(hours=9))
