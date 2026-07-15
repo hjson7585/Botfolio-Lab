@@ -41,6 +41,23 @@ def _to_kst(dt):
     return dt.astimezone(kst)
 
 
+def _pick_visit_datetime(data: dict):
+    candidates = [
+        data.get("visitedAt"),
+        data.get("visited_at"),
+        data.get("createdAt"),
+        data.get("created_at"),
+        data.get("lastVisitedAt"),
+        data.get("last_visited_at"),
+    ]
+
+    for value in candidates:
+        dt = _to_kst(value)
+        if dt:
+            return dt
+    return None
+
+
 @router.post("/visit")
 def track_visit(body: VisitRequest):
     now = datetime.now(timezone.utc)
@@ -49,7 +66,12 @@ def track_visit(body: VisitRequest):
     snap = ref.get()
 
     if snap.exists:
-        ref.set({"lastVisitedAt": now}, merge=True)
+        ref.set(
+            {
+                "lastVisitedAt": now,
+            },
+            merge=True,
+        )
     else:
         ref.set(
             {
@@ -82,7 +104,7 @@ def visit_today():
     count = 0
     for doc in docs:
         data = doc.to_dict() or {}
-        dt = _to_kst(data.get("visitedAt"))
+        dt = _pick_visit_datetime(data)
         if dt and dt.strftime("%Y-%m-%d") == today_str:
             count += 1
 
@@ -102,7 +124,7 @@ def visit_daily(days: int = 30):
 
     for doc in docs:
         data = doc.to_dict() or {}
-        dt = _to_kst(data.get("visitedAt"))
+        dt = _pick_visit_datetime(data)
         if not dt:
             continue
 
