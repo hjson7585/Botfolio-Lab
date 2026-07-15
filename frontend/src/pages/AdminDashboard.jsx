@@ -497,42 +497,21 @@ export default function AdminDashboard() {
     /* ── 방문자 로드 ── */
     useEffect(() => {
         const sid = getOrCreateSessionId();
+
         fetch(`${API}/visit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: sid }),
-        }).catch(() => { });
-
-        // ✅ 누적 방문자: 서버에서 직접 집계
-        fetch(`${API}/visit-count`)
-            .then((r) => r.json())
-            .then((d) => setVisitorTotal(d.total || 0))
-            .catch(() => { });
-
-        // ✅ 오늘 방문자: 서버의 /visit-today 엔드포인트 사용 (UTC 날짜 오차 제거)
-        fetch(`${API}/visit-today`)
-            .then((r) => r.json())
-            .then((d) => setTodayVisitors(d.today || 0))
-            .catch(() => { });
-
-        // ✅ 일별 차트 데이터
-        fetch(`${API}/visit-daily?days=30`)
-            .then((r) => r.json())
-            .then((arr) => {
-                setVisitorDaily(Array.isArray(arr) ? arr : []);
-            })
-            .catch(() => { });
-
-        fetch(`${API}/visit-daily?days=30`)
-            .then((r) => r.json())
-            .then((arr) => {
-                setVisitorDaily(Array.isArray(arr) ? arr : []);
-                const today = new Date();
-                const mm = String(today.getMonth() + 1).padStart(2, "0");
-                const dd = String(today.getDate()).padStart(2, "0");
-                const todayStr = `${mm}/${dd}`;
-                const todayRow = arr.find((r) => r.date === todayStr);
-                setTodayVisitors(todayRow?.count || 0);
+        })
+            .then(() => Promise.all([
+                fetch(`${API}/visit-count`).then((r) => r.json()).catch(() => ({ total: 0 })),
+                fetch(`${API}/visit-today`).then((r) => r.json()).catch(() => ({ today: 0 })),
+                fetch(`${API}/visit-daily?days=30`).then((r) => r.json()).catch(() => ([])),
+            ]))
+            .then(([countData, todayData, dailyData]) => {
+                setVisitorTotal(countData.total || 0);
+                setTodayVisitors(todayData.today || 0);
+                setVisitorDaily(Array.isArray(dailyData) ? dailyData : []);
             })
             .catch(() => { });
     }, []);
