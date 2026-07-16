@@ -1,61 +1,12 @@
-import { useState } from "react";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const ADMIN_PASSWORD = "7585";
-
-const AGENTS = [
-    { key: "bear", label: "🐻 인더스트리곰", color: "#3B82F6" },
-    { key: "fox", label: "🦊 모멘텀여우", color: "#F59E0B" },
-    { key: "turtle", label: "🐢 배당거북", color: "#10B981", disabled: true },
-];
-
-// ── 비밀번호 입력 화면 ────────────────────────────────
-function PasswordGate({ onUnlock }) {
-    const [input, setInput] = useState("");
-    const [error, setError] = useState(false);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (input === ADMIN_PASSWORD) {
-            onUnlock();
-        } else {
-            setError(true);
-            setInput("");
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-10 shadow-sm border border-gray-100 w-80 flex flex-col gap-4">
-                <h2 className="text-xl font-black text-gray-800 text-center">🔒 관리자 인증</h2>
-                <input
-                    type="password"
-                    value={input}
-                    onChange={(e) => { setInput(e.target.value); setError(false); }}
-                    placeholder="비밀번호 입력"
-                    autoFocus
-                    className="border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-gray-400 transition"
-                />
-                {error && (
-                    <p className="text-xs text-red-500 font-semibold text-center">❌ 비밀번호가 틀렸습니다</p>
-                )}
-                <button
-                    type="submit"
-                    className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gray-800 hover:bg-gray-700 transition"
-                >
-                    확인
-                </button>
-            </form>
-        </div>
-    );
-}
-
-// ── 에이전트 카드 ─────────────────────────────────────
 function AgentCard({ agent }) {
     const [runStatus, setRunStatus] = useState(null);
     const [logStatus, setLogStatus] = useState(null);
+    const [stopStatus, setStopStatus] = useState(null);
+    const [rebalStatus, setRebalStatus] = useState(null);
     const [running, setRunning] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [stopping, setStopping] = useState(false);
+    const [rebalancing, setRebalancing] = useState(false);
 
     const handleRun = async () => {
         if (!confirm(`${agent.label} 에이전트를 지금 바로 실행할까요?`)) return;
@@ -67,6 +18,30 @@ function AgentCard({ agent }) {
         } catch {
             setRunStatus({ ok: false, msg: "네트워크 오류" });
         } finally { setRunning(false); }
+    };
+
+    const handleStopCheck = async () => {
+        if (!confirm(`🐻 손절/익절 체크만 실행할까요?`)) return;
+        setStopping(true); setStopStatus(null);
+        try {
+            const res = await fetch(`${API}/admin/run/bear/stopcheck`, { method: "POST" });
+            const data = await res.json();
+            setStopStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
+        } catch {
+            setStopStatus({ ok: false, msg: "네트워크 오류" });
+        } finally { setStopping(false); }
+    };
+
+    const handleRebalance = async () => {
+        if (!confirm(`🐻 리밸런싱을 지금 강제 실행할까요?\n(25일 주기 무시)`)) return;
+        setRebalancing(true); setRebalStatus(null);
+        try {
+            const res = await fetch(`${API}/admin/run/bear/rebalance`, { method: "POST" });
+            const data = await res.json();
+            setRebalStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
+        } catch {
+            setRebalStatus({ ok: false, msg: "네트워크 오류" });
+        } finally { setRebalancing(false); }
     };
 
     const handleClearLog = async () => {
@@ -85,19 +60,54 @@ function AgentCard({ agent }) {
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black text-gray-800 mb-4">{agent.label}</h3>
             <div className="flex flex-col gap-3">
+
+                {/* 기존: 일반 실행 (25일 주기 적용) */}
                 <button
                     onClick={handleRun}
                     disabled={running || agent.disabled}
                     className="w-full py-3 rounded-2xl text-sm font-bold text-white transition disabled:opacity-40"
                     style={{ background: agent.color }}
                 >
-                    {running ? "실행 중..." : "▶ 지금 실행"}
+                    {running ? "실행 중..." : "▶ 지금 실행 (주기 적용)"}
                 </button>
                 {runStatus && (
                     <p className={`text-xs font-semibold ${runStatus.ok ? "text-green-500" : "text-red-500"}`}>
                         {runStatus.ok ? "✅ " : "❌ "}{runStatus.msg}
                     </p>
                 )}
+
+                {/* 🐻 인더스트리곰 전용 버튼 */}
+                {agent.key === "bear" && (
+                    <>
+                        <button
+                            onClick={handleStopCheck}
+                            disabled={stopping}
+                            className="w-full py-3 rounded-2xl text-sm font-bold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition disabled:opacity-40"
+                        >
+                            {stopping ? "체크 중..." : "🛑 손절/익절 체크만"}
+                        </button>
+                        {stopStatus && (
+                            <p className={`text-xs font-semibold ${stopStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                                {stopStatus.ok ? "✅ " : "❌ "}{stopStatus.msg}
+                            </p>
+                        )}
+
+                        <button
+                            onClick={handleRebalance}
+                            disabled={rebalancing}
+                            className="w-full py-3 rounded-2xl text-sm font-bold text-orange-600 border border-orange-200 bg-orange-50 hover:bg-orange-100 transition disabled:opacity-40"
+                        >
+                            {rebalancing ? "리밸런싱 중..." : "🔄 리밸런싱 강제 실행"}
+                        </button>
+                        {rebalStatus && (
+                            <p className={`text-xs font-semibold ${rebalStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                                {rebalStatus.ok ? "✅ " : "❌ "}{rebalStatus.msg}
+                            </p>
+                        )}
+                    </>
+                )}
+
+                {/* 로그 삭제 */}
                 <button
                     onClick={handleClearLog}
                     disabled={deleting}
@@ -114,25 +124,6 @@ function AgentCard({ agent }) {
             {agent.disabled && (
                 <p className="text-xs text-gray-400 mt-3">※ 미구현 에이전트</p>
             )}
-        </div>
-    );
-}
-
-// ── 메인 페이지 ───────────────────────────────────────
-export default function AdminPage() {
-    const [unlocked, setUnlocked] = useState(false);
-
-    if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
-
-    return (
-        <div className="min-h-screen bg-gray-50 p-8">
-            <div className="max-w-3xl mx-auto">
-                <h1 className="text-3xl font-black text-gray-800 mb-2">⚙️ 관리자 대시보드</h1>
-                <p className="text-sm text-gray-400 mb-8">에이전트 수동 실행 및 로그 관리</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {AGENTS.map(a => <AgentCard key={a.key} agent={a} />)}
-                </div>
-            </div>
         </div>
     );
 }

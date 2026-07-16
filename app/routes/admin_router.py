@@ -14,7 +14,7 @@ LOG_FILES = {
 }
 
 
-# ── 에이전트 단발 실행 ──────────────────────────────────
+# ── 기존 에이전트 실행 (자동 스케줄용, 리밸런싱 주기 유지) ──
 @router.post("/run/{agent}")
 async def run_agent(agent: str):
     if agent == "bear":
@@ -30,6 +30,24 @@ async def run_agent(agent: str):
     else:
         raise HTTPException(status_code=404, detail=f"알 수 없는 에이전트: {agent}")
     return {"ok": True, "message": f"{agent} 에이전트 실행 완료"}
+
+
+# ── 🐻 손절/익절 전용 실행 ──────────────────────────────
+@router.post("/run/bear/stopcheck")
+async def run_bear_stopcheck():
+    from app.services.industry_bear_agent import run_industry_bear_stopcheck
+
+    result = await asyncio.to_thread(run_industry_bear_stopcheck)
+    return {"ok": True, "message": "손절/익절 체크 완료", "result": result}
+
+
+# ── 🐻 리밸런싱 강제 실행 ───────────────────────────────
+@router.post("/run/bear/rebalance")
+async def run_bear_rebalance():
+    from app.services.industry_bear_agent import run_industry_bear_rebalance
+
+    result = await asyncio.to_thread(run_industry_bear_rebalance)
+    return {"ok": True, "message": "리밸런싱 강제 실행 완료", "result": result}
 
 
 # ── 로그 삭제 ───────────────────────────────────────────
