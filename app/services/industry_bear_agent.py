@@ -247,9 +247,17 @@ def get_holdings() -> tuple[list[dict], float]:
 
     db = SessionLocal()
     try:
-        items = db.query(Portfolio).all()
-        account = db.query(Account).first()
-        cash = account.cash if account else 0
+        items = (
+            db.query(Portfolio).filter(Portfolio.agent == "bear").all()
+        )  # ← agent 필터 추가
+        account = (
+            db.query(Account)
+            .filter(Account.agent == "bear")
+            .first()  # ← agent 필터 추가
+        )
+        cash = (
+            float(account.cash) if account and account.cash is not None else 0.0
+        )  # ← None 방어
         holdings = []
         for item in items:
             try:
@@ -338,7 +346,7 @@ def _run_llm_decision(
     holdings: list[dict],
     sentiment: dict,
     cash: float,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, set]:
     """
     매수/매도 LLM 판단을 실행합니다.
     캐시 히트 시 LLM 호출 없이 반환합니다.
