@@ -12,10 +12,17 @@ function AgentCard({ agent }) {
         try {
             const res = await fetch(`${API}/admin/run/${agent.key}`, { method: "POST" });
             const data = await res.json();
-            setRunStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
-        } catch {
-            setRunStatus({ ok: false, msg: "네트워크 오류" });
-        } finally { setRunning(false); }
+            if (data.ok) {
+                setRunStatus({ ok: true, msg: data.message || "실행 완료" });
+            } else {
+                // ← error 필드 우선, 없으면 detail
+                setRunStatus({ ok: false, msg: data.error || data.detail || "알 수 없는 오류" });
+            }
+        } catch (err) {
+            setRunStatus({ ok: false, msg: `네트워크 오류: ${err.message}` });
+        } finally {
+            setRunning(false);
+        }
     };
 
     const handleRebalance = async (force = false) => {
@@ -28,10 +35,16 @@ function AgentCard({ agent }) {
         try {
             const res = await fetch(url, { method: "POST" });
             const data = await res.json();
-            setRebalStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
-        } catch {
-            setRebalStatus({ ok: false, msg: "네트워크 오류" });
-        } finally { setRebalancing(false); }
+            if (data.ok) {
+                setRebalStatus({ ok: true, msg: data.message || "리밸런싱 완료" });
+            } else {
+                setRebalStatus({ ok: false, msg: data.error || data.detail || "알 수 없는 오류" });
+            }
+        } catch (err) {
+            setRebalStatus({ ok: false, msg: `네트워크 오류: ${err.message}` });
+        } finally {
+            setRebalancing(false);
+        }
     };
 
     const handleClearLog = async () => {
@@ -40,10 +53,16 @@ function AgentCard({ agent }) {
         try {
             const res = await fetch(`${API}/admin/logs/${agent.key}`, { method: "DELETE" });
             const data = await res.json();
-            setLogStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
-        } catch {
-            setLogStatus({ ok: false, msg: "네트워크 오류" });
-        } finally { setDeleting(false); }
+            if (data.ok) {
+                setLogStatus({ ok: true, msg: data.message || "삭제 완료" });
+            } else {
+                setLogStatus({ ok: false, msg: data.error || data.detail || "알 수 없는 오류" });
+            }
+        } catch (err) {
+            setLogStatus({ ok: false, msg: `네트워크 오류: ${err.message}` });
+        } finally {
+            setDeleting(false);
+        }
     };
 
     return (
@@ -61,12 +80,12 @@ function AgentCard({ agent }) {
                     {running ? "실행 중..." : "▶ 매일 실행 (손절/익절 + 매매)"}
                 </button>
                 {runStatus && (
-                    <p className={`text-xs font-semibold ${runStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                    <p className={`text-xs font-semibold break-all ${runStatus.ok ? "text-green-500" : "text-red-500"}`}>
                         {runStatus.ok ? "✅ " : "❌ "}{runStatus.msg}
                     </p>
                 )}
 
-                {/* 🐻 리밸런싱 버튼 (인더스트리곰 전용) */}
+                {/* 🐻 리밸런싱 버튼 */}
                 {agent.key === "bear" && (
                     <>
                         <button
@@ -84,7 +103,7 @@ function AgentCard({ agent }) {
                             {rebalancing ? "리밸런싱 중..." : "⚡ 리밸런싱 강제 실행"}
                         </button>
                         {rebalStatus && (
-                            <p className={`text-xs font-semibold ${rebalStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                            <p className={`text-xs font-semibold break-all ${rebalStatus.ok ? "text-green-500" : "text-red-500"}`}>
                                 {rebalStatus.ok ? "✅ " : "❌ "}{rebalStatus.msg}
                             </p>
                         )}
@@ -100,7 +119,7 @@ function AgentCard({ agent }) {
                     {deleting ? "삭제 중..." : "🗑 로그 삭제"}
                 </button>
                 {logStatus && (
-                    <p className={`text-xs font-semibold ${logStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                    <p className={`text-xs font-semibold break-all ${logStatus.ok ? "text-green-500" : "text-red-500"}`}>
                         {logStatus.ok ? "✅ " : "❌ "}{logStatus.msg}
                     </p>
                 )}
