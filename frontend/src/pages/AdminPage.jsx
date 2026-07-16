@@ -1,15 +1,13 @@
 function AgentCard({ agent }) {
     const [runStatus, setRunStatus] = useState(null);
-    const [logStatus, setLogStatus] = useState(null);
-    const [stopStatus, setStopStatus] = useState(null);
     const [rebalStatus, setRebalStatus] = useState(null);
+    const [logStatus, setLogStatus] = useState(null);
     const [running, setRunning] = useState(false);
-    const [deleting, setDeleting] = useState(false);
-    const [stopping, setStopping] = useState(false);
     const [rebalancing, setRebalancing] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const handleRun = async () => {
-        if (!confirm(`${agent.label} 에이전트를 지금 바로 실행할까요?`)) return;
+        if (!confirm(`${agent.label} 매일 실행 (손절/익절 + 매매 조건 확인)?`)) return;
         setRunning(true); setRunStatus(null);
         try {
             const res = await fetch(`${API}/admin/run/${agent.key}`, { method: "POST" });
@@ -20,23 +18,15 @@ function AgentCard({ agent }) {
         } finally { setRunning(false); }
     };
 
-    const handleStopCheck = async () => {
-        if (!confirm(`🐻 손절/익절 체크만 실행할까요?`)) return;
-        setStopping(true); setStopStatus(null);
-        try {
-            const res = await fetch(`${API}/admin/run/bear/stopcheck`, { method: "POST" });
-            const data = await res.json();
-            setStopStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
-        } catch {
-            setStopStatus({ ok: false, msg: "네트워크 오류" });
-        } finally { setStopping(false); }
-    };
-
-    const handleRebalance = async () => {
-        if (!confirm(`🐻 리밸런싱을 지금 강제 실행할까요?\n(25일 주기 무시)`)) return;
+    const handleRebalance = async (force = false) => {
+        const label = force ? "리밸런싱 강제 실행 (주기 무시)" : "리밸런싱 실행 (25일 주기 적용)";
+        if (!confirm(`🐻 ${label}?`)) return;
         setRebalancing(true); setRebalStatus(null);
+        const url = force
+            ? `${API}/admin/run/bear/rebalance/force`
+            : `${API}/admin/run/bear/rebalance`;
         try {
-            const res = await fetch(`${API}/admin/run/bear/rebalance`, { method: "POST" });
+            const res = await fetch(url, { method: "POST" });
             const data = await res.json();
             setRebalStatus(res.ok ? { ok: true, msg: data.message } : { ok: false, msg: data.detail });
         } catch {
@@ -61,14 +51,14 @@ function AgentCard({ agent }) {
             <h3 className="text-lg font-black text-gray-800 mb-4">{agent.label}</h3>
             <div className="flex flex-col gap-3">
 
-                {/* 기존: 일반 실행 (25일 주기 적용) */}
+                {/* 매일 실행 */}
                 <button
                     onClick={handleRun}
                     disabled={running || agent.disabled}
                     className="w-full py-3 rounded-2xl text-sm font-bold text-white transition disabled:opacity-40"
                     style={{ background: agent.color }}
                 >
-                    {running ? "실행 중..." : "▶ 지금 실행 (주기 적용)"}
+                    {running ? "실행 중..." : "▶ 매일 실행 (손절/익절 + 매매)"}
                 </button>
                 {runStatus && (
                     <p className={`text-xs font-semibold ${runStatus.ok ? "text-green-500" : "text-red-500"}`}>
@@ -76,28 +66,22 @@ function AgentCard({ agent }) {
                     </p>
                 )}
 
-                {/* 🐻 인더스트리곰 전용 버튼 */}
+                {/* 🐻 리밸런싱 버튼 (인더스트리곰 전용) */}
                 {agent.key === "bear" && (
                     <>
                         <button
-                            onClick={handleStopCheck}
-                            disabled={stopping}
-                            className="w-full py-3 rounded-2xl text-sm font-bold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition disabled:opacity-40"
-                        >
-                            {stopping ? "체크 중..." : "🛑 손절/익절 체크만"}
-                        </button>
-                        {stopStatus && (
-                            <p className={`text-xs font-semibold ${stopStatus.ok ? "text-green-500" : "text-red-500"}`}>
-                                {stopStatus.ok ? "✅ " : "❌ "}{stopStatus.msg}
-                            </p>
-                        )}
-
-                        <button
-                            onClick={handleRebalance}
+                            onClick={() => handleRebalance(false)}
                             disabled={rebalancing}
                             className="w-full py-3 rounded-2xl text-sm font-bold text-orange-600 border border-orange-200 bg-orange-50 hover:bg-orange-100 transition disabled:opacity-40"
                         >
-                            {rebalancing ? "리밸런싱 중..." : "🔄 리밸런싱 강제 실행"}
+                            {rebalancing ? "리밸런싱 중..." : "🔄 리밸런싱 (25일 주기)"}
+                        </button>
+                        <button
+                            onClick={() => handleRebalance(true)}
+                            disabled={rebalancing}
+                            className="w-full py-3 rounded-2xl text-sm font-bold text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 transition disabled:opacity-40"
+                        >
+                            {rebalancing ? "리밸런싱 중..." : "⚡ 리밸런싱 강제 실행"}
                         </button>
                         {rebalStatus && (
                             <p className={`text-xs font-semibold ${rebalStatus.ok ? "text-green-500" : "text-red-500"}`}>
@@ -111,7 +95,7 @@ function AgentCard({ agent }) {
                 <button
                     onClick={handleClearLog}
                     disabled={deleting}
-                    className="w-full py-3 rounded-2xl text-sm font-bold text-red-500 border border-red-200 bg-red-50 hover:bg-red-100 transition disabled:opacity-40"
+                    className="w-full py-3 rounded-2xl text-sm font-bold text-gray-500 border border-gray-200 bg-gray-50 hover:bg-gray-100 transition disabled:opacity-40"
                 >
                     {deleting ? "삭제 중..." : "🗑 로그 삭제"}
                 </button>
@@ -121,9 +105,7 @@ function AgentCard({ agent }) {
                     </p>
                 )}
             </div>
-            {agent.disabled && (
-                <p className="text-xs text-gray-400 mt-3">※ 미구현 에이전트</p>
-            )}
+            {agent.disabled && <p className="text-xs text-gray-400 mt-3">※ 미구현 에이전트</p>}
         </div>
     );
 }

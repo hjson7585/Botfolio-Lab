@@ -1,9 +1,7 @@
 # app/routes/admin_router.py
 import asyncio
-import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -14,7 +12,7 @@ LOG_FILES = {
 }
 
 
-# ── 기존 에이전트 실행 (자동 스케줄용, 리밸런싱 주기 유지) ──
+# ── 매일 실행 (손절/익절 + 매매 조건 확인) ──────────────
 @router.post("/run/{agent}")
 async def run_agent(agent: str):
     if agent == "bear":
@@ -32,25 +30,25 @@ async def run_agent(agent: str):
     return {"ok": True, "message": f"{agent} 에이전트 실행 완료"}
 
 
-# ── 🐻 손절/익절 전용 실행 ──────────────────────────────
-@router.post("/run/bear/stopcheck")
-async def run_bear_stopcheck():
-    from app.services.industry_bear_agent import run_industry_bear_stopcheck
-
-    result = await asyncio.to_thread(run_industry_bear_stopcheck)
-    return {"ok": True, "message": "손절/익절 체크 완료", "result": result}
-
-
-# ── 🐻 리밸런싱 강제 실행 ───────────────────────────────
+# ── 🐻 리밸런싱 (정기 주기 적용) ────────────────────────
 @router.post("/run/bear/rebalance")
 async def run_bear_rebalance():
     from app.services.industry_bear_agent import run_industry_bear_rebalance
 
-    result = await asyncio.to_thread(run_industry_bear_rebalance)
+    result = await asyncio.to_thread(run_industry_bear_rebalance, False)
+    return {"ok": True, "message": "리밸런싱 실행 완료", "result": result}
+
+
+# ── 🐻 리밸런싱 강제 실행 (주기 무시) ───────────────────
+@router.post("/run/bear/rebalance/force")
+async def run_bear_rebalance_force():
+    from app.services.industry_bear_agent import run_industry_bear_rebalance
+
+    result = await asyncio.to_thread(run_industry_bear_rebalance, True)
     return {"ok": True, "message": "리밸런싱 강제 실행 완료", "result": result}
 
 
-# ── 로그 삭제 ───────────────────────────────────────────
+# ── 로그 삭제 ────────────────────────────────────────────
 @router.delete("/logs/{agent}")
 def clear_logs(agent: str):
     if agent not in LOG_FILES:
