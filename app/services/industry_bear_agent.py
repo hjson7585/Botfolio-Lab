@@ -21,7 +21,6 @@ from app.services.llm_service import ask_llm
 from app.services.news_service import get_latest_news, analyze_news_sentiment_longterm
 from app.services.trade_service import buy_stock, sell_stock
 
-LOG_FILE = "logs/ai_logs.json"
 CACHE_FILE = "logs/response_cache.json"
 
 CACHE_TTL_MINUTES = 23 * 60
@@ -33,7 +32,7 @@ MIN_HOLD_DAYS = 90
 MIN_TRADE_CASH = 200.0
 REBALANCE_INTERVAL_DAYS = 25
 LAST_RUN_FILE = "logs/bear_last_rebalance.txt"
-AGENT = "bear"  # ← 에이전트 상수
+AGENT = "bear"
 
 INDUSTRY_ETFS = {
     "XLK": "Technology",
@@ -93,15 +92,21 @@ def _cache_key(data: str) -> str:
 
 def load_cache() -> dict:
     if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
 
 
 def save_cache(cache: dict):
-    os.makedirs("logs", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(cache, f)
+    try:
+        os.makedirs("logs", exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f"[캐시 저장 오류] {e}")
 
 
 def get_cached(key: str) -> dict | None:
@@ -126,6 +131,38 @@ def set_cached(key: str, parsed: dict):
         k: v for k, v in cache.items() if datetime.fromisoformat(v["expires"]) > now
     }
     save_cache(cache)
+
+
+# ── DB 기반 로그 저장 (Railway 파일시스템 초기화 대응) ──
+def save_log(log_data: dict):
+    try:
+        from app.db.database import SessionLocal
+        from app.db.models import AgentLog
+
+        db = SessionLocal()
+        try:
+            entry = AgentLog(
+                agent=AGENT,
+                data=json.dumps(log_data, ensure_ascii=False),
+            )
+            db.add(entry)
+            db.commit()
+
+            # 최신 20개만 유지
+            rows = (
+                db.query(AgentLog)
+                .filter(AgentLog.agent == AGENT)
+                .order_by(AgentLog.id.desc())
+                .all()
+            )
+            if len(rows) > 20:
+                for old in rows[20:]:
+                    db.delete(old)
+                db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[로그 DB 저장 오류] {e}")
 
 
 def compute_etf_scores(sentiment: dict | None = None) -> list[dict]:
@@ -229,7 +266,6 @@ def get_holdings() -> tuple[list[dict], float]:
 
     db = SessionLocal()
     try:
-        # ✅ agent="bear" 필터 고정
         items = db.query(Portfolio).filter(Portfolio.agent == AGENT).all()
         account = db.query(Account).filter(Account.agent == AGENT).first()
         cash = float(account.cash) if account and account.cash is not None else 0.0
@@ -262,20 +298,6 @@ def get_holdings() -> tuple[list[dict], float]:
         return holdings, round(cash, 2)
     finally:
         db.close()
-
-
-def save_log(log_data: dict):
-    try:
-        os.makedirs("logs", exist_ok=True)
-        logs = []
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        logs.insert(0, log_data)
-        with open(LOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(logs[:20], f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[로그 오류] {e}")
 
 
 def parse_llm_response(text: str) -> dict:
@@ -449,7 +471,7 @@ def _execute_trades(parsed: dict, holdings: list[dict], cash: float) -> list[str
         if h:
             hold_days = h.get("hold_days", 999)
             if hold_days >= MIN_HOLD_DAYS:
-                r = sell_stock(sym, h["qty"], agent=AGENT)  # ✅ agent 추가
+                r = sell_stock(sym, h["qty"], agent=AGENT)
                 msg = f"[LLM매도] {sym} pnl={h['pnl']}% (보유 {hold_days}일) → {r.get('message', '')}"
                 trade_results.append(msg)
                 print(msg)
@@ -483,7 +505,7 @@ def _execute_trades(parsed: dict, holdings: list[dict], cash: float) -> list[str
                     trade_results.append(msg)
                     print(f"[매수 스킵] {sym} — 현금 부족")
                     continue
-                r = buy_stock(sym, quantity=qty, agent=AGENT)  # ✅ agent 추가
+                r = buy_stock(sym, quantity=qty, agent=AGENT)
                 msg = f"BUY {sym} x{qty}: {r.get('message', '')}"
                 trade_results.append(msg)
                 print(f"[매수] {sym} x{qty} — 중장기 편입")
@@ -506,16 +528,14 @@ def run_industry_bear():
     print("[STEP 1] 손절/익절 체크")
     for h in holdings:
         hold_days = h.get("hold_days", 999)
-
         if h["pnl"] <= STOP_LOSS_PCT:
-            r = sell_stock(h["etf"], h["qty"], agent=AGENT)  # ✅
+            r = sell_stock(h["etf"], h["qty"], agent=AGENT)
             msg = f"[손절] {h['etf']} {h['pnl']}% (보유 {hold_days}일) → {r.get('message')}"
             print(msg)
             trade_results.append(msg)
-
         elif h["pnl"] >= TAKE_PROFIT_PCT:
             if hold_days >= MIN_HOLD_DAYS:
-                r = sell_stock(h["etf"], h["qty"], agent=AGENT)  # ✅
+                r = sell_stock(h["etf"], h["qty"], agent=AGENT)
                 msg = f"[익절] {h['etf']} {h['pnl']}% (보유 {hold_days}일) → {r.get('message')}"
                 print(msg)
                 trade_results.append(msg)
