@@ -12,25 +12,12 @@ LOG_FILES = {
 }
 
 
-# ── 매일 실행 (손절/익절 + 매매 조건 확인) ──────────────
-@router.post("/run/{agent}")
-async def run_agent(agent: str):
-    if agent == "bear":
-        from app.services.industry_bear_agent import run_industry_bear
-
-        await asyncio.to_thread(run_industry_bear)
-    elif agent == "fox":
-        from app.services.momentum_fox_agent import run_momentum_fox
-
-        await asyncio.to_thread(run_momentum_fox)
-    elif agent == "turtle":
-        raise HTTPException(status_code=501, detail="배당거북은 아직 미구현입니다.")
-    else:
-        raise HTTPException(status_code=404, detail=f"알 수 없는 에이전트: {agent}")
-    return {"ok": True, "message": f"{agent} 에이전트 실행 완료"}
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ⚠️ 고정 경로를 와일드카드 /run/{agent} 보다 반드시 먼저 등록
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-# ── 🐻 리밸런싱 (정기 주기 적용) ────────────────────────
+# ── 🐻 리밸런싱 (25일 주기 적용) ────────────────────────
 @router.post("/run/bear/rebalance")
 async def run_bear_rebalance():
     from app.services.industry_bear_agent import run_industry_bear_rebalance
@@ -46,6 +33,25 @@ async def run_bear_rebalance_force():
 
     result = await asyncio.to_thread(run_industry_bear_rebalance, True)
     return {"ok": True, "message": "리밸런싱 강제 실행 완료", "result": result}
+
+
+# ── 매일 실행 (손절/익절 + 매매 조건 확인) ──────────────
+# ⚠️ 반드시 고정 경로들보다 아래에 위치해야 함
+@router.post("/run/{agent}")
+async def run_agent(agent: str):
+    if agent == "bear":
+        from app.services.industry_bear_agent import run_industry_bear
+
+        await asyncio.to_thread(run_industry_bear)
+    elif agent == "fox":
+        from app.services.momentum_fox_agent import run_momentum_fox
+
+        await asyncio.to_thread(run_momentum_fox)
+    elif agent == "turtle":
+        raise HTTPException(status_code=501, detail="배당거북은 아직 미구현입니다.")
+    else:
+        raise HTTPException(status_code=404, detail=f"알 수 없는 에이전트: {agent}")
+    return {"ok": True, "message": f"{agent} 에이전트 실행 완료"}
 
 
 # ── 로그 삭제 ────────────────────────────────────────────
