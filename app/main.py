@@ -1,7 +1,5 @@
 ﻿# app/main.py
 from contextlib import asynccontextmanager
-from pathlib import Path
-import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.firebase_init import init_firebase
@@ -21,53 +19,19 @@ def _init_accounts():
         for agent in AGENTS:
             rows = db.query(Account).filter(Account.agent == agent).all()
             if len(rows) == 0:
+                # ✅ 계좌가 없을 때만 생성 (재배포 시 리셋 방지)
                 db.add(Account(agent=agent, cash=INITIAL_CASH))
                 print(f"[계좌 초기화] {agent} → ${INITIAL_CASH:,.0f}")
-            elif len(rows) == 1:
-                before = float(rows[0].cash or 0)
-                rows[0].cash = INITIAL_CASH
-                print(f"[계좌 정렬] {agent} ${before:,.0f} → ${INITIAL_CASH:,.0f}")
-            else:
-                for r in rows:
+            elif len(rows) > 1:
+                # 중복 계좌는 첫 번째만 남기고 삭제
+                for r in rows[1:]:
                     db.delete(r)
-                db.flush()
-                db.add(Account(agent=agent, cash=INITIAL_CASH))
-                print(
-                    f"[계좌 중복 정리] {agent} 중복 {len(rows)}건 삭제 → ${INITIAL_CASH:,.0f} 재생성"
-                )
+                print(f"[계좌 중복 정리] {agent} 중복 {len(rows)-1}건 삭제")
+            else:
+                print(f"[계좌 확인] {agent} ${rows[0].cash:,.0f} 유지")
         db.commit()
     finally:
         db.close()
-
-
-def _cleanup_legacy_profit_history():
-    history_dir = Path("logs")
-    targets = ["fox", "turtle", "bear"]
-    for agent in targets:
-        path = history_dir / f"profit_history_{agent}.json"
-        if not path.exists():
-            print(f"[히스토리 없음] {path.name}")
-            continue
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            should_delete = False
-            if isinstance(raw, dict):
-                for bucket in ["daily", "weekly", "monthly", "yearly"]:
-                    rows = raw.get(bucket, [])
-                    for row in rows:
-                        asset = row.get("total_asset")
-                        if asset is not None and float(asset) <= 1000.0:
-                            should_delete = True
-                            break
-                    if should_delete:
-                        break
-            if should_delete:
-                path.unlink(missing_ok=True)
-                print(f"[히스토리 정리] {path.name} 삭제 완료")
-            else:
-                print(f"[히스토리 유지] {path.name}")
-        except Exception as e:
-            print(f"[히스토리 정리 스킵] {path.name}: {e}")
 
 
 @asynccontextmanager
@@ -78,7 +42,6 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("[DB] 테이블 생성/확인 완료")
     _init_accounts()
-    _cleanup_legacy_profit_history()
     start_scheduler()
     yield
     stop_scheduler()
@@ -86,9 +49,6 @@ async def lifespan(app: FastAPI):
 
 api = FastAPI(lifespan=lifespan)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ⚠️ CORS 미들웨어는 반드시 라우터 include 전에 등록
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 api.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -101,7 +61,6 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
-# 라우터 등록 (CORS 미들웨어 이후)
 from app.routes.ai_logs_router import router as ai_logs_router
 from app.routes.portfolio_router import router as portfolio_router
 from app.routes.fox_logs_router import router as fox_logs_router
