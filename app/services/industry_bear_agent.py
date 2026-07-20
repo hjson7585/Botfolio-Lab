@@ -495,62 +495,57 @@ def _execute_trades(parsed: dict, holdings: list[dict], cash: float) -> list[str
 # ════════════════════════════════════════════════════════
 def run_industry_bear():
     print("\n=== 인더스트리곰 (매일 실행) ===\n")
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     holdings, cash = get_holdings()
     trade_results = []
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # STEP 1: 손절/익절
-    print("[STEP 1] 손절/익절 체크")
-    for h in holdings:
-        hold_days = h.get("hold_days", 999)
-        if h["pnl"] <= STOP_LOSS_PCT:
-            r = sell_stock(h["etf"], h["qty"], agent=AGENT)
-            msg = (
-                f"[손절] {h['etf']} {h['pnl']}% ({hold_days}일) → {r.get('message','')}"
-            )
-            print(msg)
-            trade_results.append(msg)
-        elif h["pnl"] >= TAKE_PROFIT_PCT:
-            if hold_days >= MIN_HOLD_DAYS:
+    try:
+        # STEP 1: 손절/익절
+        print("[STEP 1] 손절/익절 체크")
+        for h in holdings:
+            hold_days = h.get("hold_days", 999)
+            if h["pnl"] <= STOP_LOSS_PCT:
                 r = sell_stock(h["etf"], h["qty"], agent=AGENT)
-                msg = f"[익절] {h['etf']} {h['pnl']}% ({hold_days}일) → {r.get('message','')}"
-            else:
-                msg = f"[익절 보류] {h['etf']} {h['pnl']}% — {MIN_HOLD_DAYS}일 미달 ({hold_days}일)"
-            print(msg)
-            trade_results.append(msg)
+                msg = f"[손절] {h['etf']} {h['pnl']}% ({hold_days}일) → {r.get('message','')}"
+                print(msg)
+                trade_results.append(msg)
+            elif h["pnl"] >= TAKE_PROFIT_PCT:
+                if hold_days >= MIN_HOLD_DAYS:
+                    r = sell_stock(h["etf"], h["qty"], agent=AGENT)
+                    msg = f"[익절] {h['etf']} {h['pnl']}% ({hold_days}일) → {r.get('message','')}"
+                else:
+                    msg = f"[익절 보류] {h['etf']} {h['pnl']}% — {MIN_HOLD_DAYS}일 미달 ({hold_days}일)"
+                print(msg)
+                trade_results.append(msg)
 
-    # STEP 2: 뉴스 + 기술 분석
-    print("[STEP 2] 뉴스/기술 분석")
-    raw_news = get_latest_news(max_per_symbol=3)
-    sentiment = analyze_news_sentiment_longterm(
-        news=raw_news, symbols=list(INDUSTRY_ETFS.keys())
-    )
-    etf_scores = compute_etf_scores(sentiment=sentiment)
-    market = get_market_state()
-    holdings, cash = get_holdings()
+        # STEP 2: 뉴스 + 기술 분석
+        print("[STEP 2] 뉴스/기술 분석")
+        raw_news = get_latest_news(max_per_symbol=3)
+        sentiment = analyze_news_sentiment_longterm(
+            news=raw_news, symbols=list(INDUSTRY_ETFS.keys())
+        )
+        etf_scores = compute_etf_scores(sentiment=sentiment)
+        market = get_market_state()
+        holdings, cash = get_holdings()
 
-    print(f"[시장] VIX={market['vix']} regime={market['regime']}")
-    print(f"[보유] {len(holdings)}개 포지션, 현금 ${cash:,.0f}")
+        print(f"[시장] VIX={market['vix']} regime={market['regime']}")
+        print(f"[보유] {len(holdings)}개 포지션, 현금 ${cash:,.0f}")
 
-    current_symbols = {h["etf"] for h in holdings}
-    score_map = {e["etf"]: e for e in etf_scores}
-    sma200_weak = set()
-    for h in holdings:
-        info = score_map.get(h["etf"])
-        if info and info["price"] < info["sma200"] and info["mo3r"] < -5.0:
-            if h.get("hold_days", 999) >= MIN_HOLD_DAYS:
-                sma200_weak.add(h["etf"])
+        current_symbols = {h["etf"] for h in holdings}
+        score_map = {e["etf"]: e for e in etf_scores}
+        sma200_weak = set()
+        for h in holdings:
+            info = score_map.get(h["etf"])
+            if info and info["price"] < info["sma200"] and info["mo3r"] < -5.0:
+                if h.get("hold_days", 999) >= MIN_HOLD_DAYS:
+                    sma200_weak.add(h["etf"])
 
-    available_slots = MAX_POSITIONS - len(current_symbols)
-    has_opportunity = (available_slots > 0 and cash >= MIN_TRADE_CASH) or len(
-        sma200_weak
-    ) > 0
+        available_slots = MAX_POSITIONS - len(current_symbols)
+        has_opportunity = (available_slots > 0 and cash >= MIN_TRADE_CASH) or len(sma200_weak) > 0
 
-    if not has_opportunity:
-        print("[매매 스킵] 조건 미충족")
-        # ✅ NO_TRADE여도 반드시 로그 저장
-        save_log(
-            {
+        if not has_opportunity:
+            print("[매매 스킵] 조건 미충족")
+            save_log({
                 "agent": "인더스트리곰",
                 "timestamp": ts,
                 "action": "NO_TRADE",
@@ -561,23 +556,20 @@ def run_industry_bear():
                 "available_slots": available_slots,
                 "trade_results": trade_results,
                 "note": "매매 조건 미충족 — 손절/익절 체크만 완료",
-            }
+            })
+            return {"action": "no_trade", "trade_results": trade_results}
+
+        parsed, result, sma200_weak = _run_llm_decision(
+            market=market,
+            etf_scores=etf_scores,
+            holdings=holdings,
+            sentiment=sentiment,
+            cash=cash,
         )
-        return {"action": "no_trade", "trade_results": trade_results}
+        llm_trades = _execute_trades(parsed, holdings, cash)
+        trade_results.extend(llm_trades)
 
-    parsed, result, sma200_weak = _run_llm_decision(
-        market=market,
-        etf_scores=etf_scores,
-        holdings=holdings,
-        sentiment=sentiment,
-        cash=cash,
-    )
-    llm_trades = _execute_trades(parsed, holdings, cash)
-    trade_results.extend(llm_trades)
-
-    # ✅ 정상 실행 로그 저장
-    save_log(
-        {
+        save_log({
             "agent": "인더스트리곰",
             "timestamp": ts,
             "strategy": "중장기 매일 매매",
@@ -598,10 +590,25 @@ def run_industry_bear():
             "total_tokens": result.get("total_tokens", 0),
             "model": result.get("model", ""),
             "rebalance": False,
-        }
-    )
+        })
 
-    return parsed
+        return parsed
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[인더스트리곰 실행 오류]\n{tb}")
+        # ✅ 예외 발생 시에도 반드시 에러 로그를 DB에 저장
+        save_log({
+            "agent": "인더스트리곰",
+            "timestamp": ts,
+            "action": "ERROR",
+            "error": str(e),
+            "traceback": tb,
+            "trade_results": trade_results,
+            "note": f"실행 중 오류 발생: {str(e)[:200]}",
+        })
+        raise
 
 
 # ════════════════════════════════════════════════════════
