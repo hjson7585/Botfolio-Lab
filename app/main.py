@@ -39,8 +39,15 @@ async def lifespan(app: FastAPI):
     from app.db.database import engine
     from app.db.models import Base
 
-    Base.metadata.create_all(bind=engine)
-    print("[DB] 테이블 생성/확인 완료")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("[DB] 테이블 생성/확인 완료")
+    except Exception as e:
+        print(f"[DB] 테이블 생성 오류: {e}")
+        import traceback
+
+        print(traceback.format_exc())
+
     _init_accounts()
     start_scheduler()
     yield
