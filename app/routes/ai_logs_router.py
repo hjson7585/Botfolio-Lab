@@ -9,6 +9,7 @@ router = APIRouter()
 
 @router.get("/ai-logs")
 def get_ai_logs():
+    """최근 20개 bear 로그 반환 — 파싱 실패 행도 raw로 포함"""
     db = SessionLocal()
     try:
         rows = (
@@ -21,12 +22,34 @@ def get_ai_logs():
         result = []
         for row in rows:
             try:
-                result.append(json.loads(row.data))
+                parsed = json.loads(row.data)
+                parsed["_log_id"] = row.id
+                result.append(parsed)
             except Exception:
-                pass
+                result.append(
+                    {"_log_id": row.id, "raw": row.data[:200], "status": "PARSE_ERROR"}
+                )
         return result
-    except Exception:
-        return []
+    except Exception as e:
+        return [{"status": "DB_ERROR", "error": str(e)}]
+    finally:
+        db.close()
+
+
+@router.get("/ai-logs/detail/{log_id}")
+def get_ai_log_detail(log_id: int):
+    """특정 로그 ID의 전체 내용 반환 (traceback 포함)"""
+    db = SessionLocal()
+    try:
+        row = db.query(AgentLog).filter(AgentLog.id == log_id).first()
+        if not row:
+            return {"error": f"log_id={log_id} 없음"}
+        try:
+            parsed = json.loads(row.data)
+            parsed["_log_id"] = row.id
+            return parsed
+        except Exception:
+            return {"_log_id": row.id, "raw": row.data}
     finally:
         db.close()
 
@@ -45,9 +68,9 @@ def clear_ai_logs():
         db.close()
 
 
-# ✅ 진단 엔드포인트 — DB 연결 상태 및 로그 개수 직접 확인
 @router.get("/ai-logs/debug")
 def debug_ai_logs():
+    """DB 연결 상태 및 로그 개수 진단"""
     import traceback
     from app.db.database import engine
     from app.db.models import Base
@@ -59,25 +82,44 @@ def debug_ai_logs():
         ),
     }
 
-    # 테이블 강제 생성 시도
     try:
         Base.metadata.create_all(bind=engine, checkfirst=True)
         result["table_create"] = "ok"
     except Exception as e:
         result["table_create"] = f"ERROR: {e}"
 
-    # 전체 AgentLog 개수 조회
     try:
         db = SessionLocal()
         total = db.query(AgentLog).count()
         bear_total = db.query(AgentLog).filter(AgentLog.agent == "bear").count()
+        # 최근 3개 로그 요약
+        recent = (
+            db.query(AgentLog)
+            .filter(AgentLog.agent == "bear")
+            .order_by(AgentLog.id.desc())
+            .limit(3)
+            .all()
+        )
         db.close()
         result["total_logs"] = total
         result["bear_logs"] = bear_total
+        result["recent_summaries"] = []
+        for row in recent:
+            try:
+                d = json.loads(row.data)
+                result["recent_summaries"].append(
+                    {
+                        "id": row.id,
+                        "timestamp": d.get("timestamp"),
+                        "status": d.get("status", d.get("action", "?")),
+                        "note": d.get("note", "")[:80],
+                    }
+                )
+            except Exception:
+                result["recent_summaries"].append({"id": row.id, "raw": row.data[:80]})
     except Exception as e:
         result["db_query_error"] = traceback.format_exc()
 
-    # 테스트 로그 직접 INSERT
     try:
         db = SessionLocal()
         test_entry = AgentLog(
@@ -85,6 +127,7 @@ def debug_ai_logs():
             data=json.dumps(
                 {
                     "agent": "인더스트리곰",
+                    "status": "DEBUG_TEST",
                     "action": "DEBUG_TEST",
                     "note": "진단용 테스트 로그",
                 },

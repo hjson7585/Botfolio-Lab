@@ -158,16 +158,22 @@ def save_log(log_data: dict):
 
     db = SessionLocal()
     try:
+        # traceback은 너무 길어서 앞 500자만 저장
+        safe_data = dict(log_data)
+        if "traceback" in safe_data:
+            safe_data["traceback"] = safe_data["traceback"][:500]
+
         entry = AgentLog(
             agent=AGENT,
-            data=json.dumps(log_data, ensure_ascii=False),
+            data=json.dumps(safe_data, ensure_ascii=False),
         )
         db.add(entry)
         db.commit()
         db.refresh(entry)
-        print(
-            f"[로그 저장 완료] id={entry.id} action={log_data.get('action', log_data.get('strategy', ''))}"
+        status = safe_data.get(
+            "status", safe_data.get("action", safe_data.get("strategy", "?"))
         )
+        print(f"[로그 저장 완료] id={entry.id} status={status}")
 
         rows = (
             db.query(AgentLog)
@@ -429,7 +435,7 @@ def _run_llm_decision(
 
     slots = MAX_POSITIONS - len(current_symbols)
     cash_note = (
-        f"CASH=${cash:.0f} (insufficient)"
+        f"CASH=${cash:.0f} (insufficient, buy will be skipped)"
         if not cash_sufficient
         else f"CASH=${cash:.0f}"
     )
@@ -442,7 +448,7 @@ def _run_llm_decision(
         'Output ONLY JSON: {"buys":["XLK"],"sells":[],"note":"<20 words"}\n\n'
         f"MARKET: VIX={market['vix']} SPY={market['spy_chg']}% regime={market['regime']}\n"
         f"SLOTS={slots} {cash_note}\n\n"
-        f"CANDIDATES:\n{etf_rows}\n\n"
+        f"CANDIDATES:\n{etf_rows or 'none'}\n\n"
         f"HOLDINGS:\n{holding_rows}\n\n"
         f"SMA200_WEAK: {', '.join(sma200_weak) or 'none'}\n\n"
         f"SENTIMENT:\n{sentiment_rows}\n\nReply ONLY JSON."
@@ -477,7 +483,7 @@ def _execute_trades(parsed: dict, holdings: list[dict], cash: float) -> list[str
     ][:slots]
 
     if cash_after < MIN_TRADE_CASH:
-        msg = f"BUY SKIPPED: cash=${cash_after:.0f} below minimum"
+        msg = f"BUY SKIPPED: cash=${cash_after:.0f} below minimum ${MIN_TRADE_CASH:.0f}"
         trade_results.append(msg)
         print(f"[매수 스킵] {msg}")
     elif buy_targets:
@@ -515,9 +521,9 @@ def run_industry_bear():
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     trade_results = []
 
-    # ✅ 최외곽 try/except — 어느 위치에서 예외가 나도 반드시 로그 저장
     try:
         holdings, cash = get_holdings()
+        print(f"[계좌] 현금 ${cash:,.0f} | 보유 {len(holdings)}개")
 
         # STEP 1: 손절/익절
         print("[STEP 1] 손절/익절 체크")
@@ -551,25 +557,19 @@ def run_industry_bear():
         print(f"[보유] {len(holdings)}개 포지션, 현금 ${cash:,.0f}")
 
         current_symbols = {h["etf"] for h in holdings}
-        score_map = {e["etf"]: e for e in etf_scores}
-        sma200_weak = set()
-        for h in holdings:
-            info = score_map.get(h["etf"])
-            if info and info["price"] < info["sma200"] and info["mo3r"] < -5.0:
-                if h.get("hold_days", 999) >= MIN_HOLD_DAYS:
-                    sma200_weak.add(h["etf"])
-
         available_slots = MAX_POSITIONS - len(current_symbols)
-        has_opportunity = (available_slots > 0 and cash >= MIN_TRADE_CASH) or len(
-            sma200_weak
-        ) > 0
+
+        # ✅ 핵심 수정: 슬롯이 있으면 현금 무관하게 LLM 항상 호출
+        #    현금 부족은 _execute_trades 내부에서 매수 스킵으로 처리
+        has_opportunity = available_slots > 0 or len(holdings) > 0
 
         if not has_opportunity:
-            print("[매매 스킵] 조건 미충족")
+            print("[매매 스킵] 슬롯 없음 & 보유 없음")
             save_log(
                 {
                     "agent": "인더스트리곰",
                     "timestamp": ts,
+                    "status": "NO_TRADE",
                     "action": "NO_TRADE",
                     "regime": market["regime"],
                     "vix": market["vix"],
@@ -577,18 +577,22 @@ def run_industry_bear():
                     "cash": cash,
                     "available_slots": available_slots,
                     "trade_results": trade_results,
-                    "note": "매매 조건 미충족 — 손절/익절 체크만 완료",
+                    "note": "슬롯 없음 & 보유 없음",
                 }
             )
             return {"action": "no_trade", "trade_results": trade_results}
 
         # STEP 3: LLM 판단 + 매매 실행
+        print("[STEP 3] LLM 판단 중...")
         parsed, result, sma200_weak = _run_llm_decision(
             market=market,
             etf_scores=etf_scores,
             holdings=holdings,
             sentiment=sentiment,
             cash=cash,
+        )
+        print(
+            f"[LLM 완료] model={result.get('model')} tokens={result.get('total_tokens')}"
         )
         llm_trades = _execute_trades(parsed, holdings, cash)
         trade_results.extend(llm_trades)
@@ -598,11 +602,13 @@ def run_industry_bear():
             {
                 "agent": "인더스트리곰",
                 "timestamp": ts,
+                "status": "OK",
                 "strategy": "중장기 매일 매매",
                 "regime": market["regime"],
                 "vix": market["vix"],
                 "holdings_count": len(holdings),
                 "cash": cash,
+                "available_slots": available_slots,
                 "buys": parsed.get("buys", []),
                 "sells": parsed.get("sells", []),
                 "sma200_weak": list(sma200_weak),
@@ -623,16 +629,16 @@ def run_industry_bear():
     except Exception as e:
         tb = traceback.format_exc()
         print(f"[인더스트리곰 최외곽 예외]\n{tb}")
-        # ✅ 어떤 예외든 반드시 ERROR 로그 DB 저장
         save_log(
             {
                 "agent": "인더스트리곰",
                 "timestamp": ts,
+                "status": "ERROR",
                 "action": "ERROR",
                 "error": str(e),
-                "traceback": tb,
+                "traceback": tb[:500],
                 "trade_results": trade_results,
-                "note": f"실행 중 예외 발생: {str(e)[:300]}",
+                "note": f"예외 발생: {str(e)[:200]}",
             }
         )
         return {"action": "error", "error": str(e), "trade_results": trade_results}
@@ -655,6 +661,7 @@ def run_industry_bear_rebalance(force: bool = False):
                 {
                     "agent": "인더스트리곰",
                     "timestamp": ts,
+                    "status": "SKIPPED",
                     "action": "REBALANCE_SKIPPED",
                     "note": msg,
                 }
@@ -684,6 +691,7 @@ def run_industry_bear_rebalance(force: bool = False):
             {
                 "agent": "인더스트리곰",
                 "timestamp": ts,
+                "status": "OK",
                 "strategy": f"리밸런싱 {'(강제)' if force else '(정기)'}",
                 "regime": market["regime"],
                 "vix": market["vix"],
@@ -714,10 +722,11 @@ def run_industry_bear_rebalance(force: bool = False):
             {
                 "agent": "인더스트리곰",
                 "timestamp": ts,
+                "status": "ERROR",
                 "action": "ERROR",
                 "error": str(e),
-                "traceback": tb,
-                "note": f"리밸런싱 중 예외 발생: {str(e)[:300]}",
+                "traceback": tb[:500],
+                "note": f"리밸런싱 중 예외: {str(e)[:200]}",
             }
         )
         return {"action": "error", "error": str(e)}
