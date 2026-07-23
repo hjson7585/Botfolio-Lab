@@ -20,16 +20,30 @@ const AGENT_COLOR = {
     turtle: "#10B981",
 };
 
+// ── 수익률 색상 헬퍼 (양수=빨간색 / 음수=파란색 / 0=검은색) ──
+function rateColor(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "text-gray-900";
+    return n > 0 ? "text-red-500" : "text-blue-500";
+}
+
+// ── 수익률 포맷 (양수=+, 음수=-, 0=0.00%) ──
+function fmtRate(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n)) return "-";
+    if (n > 0) return `+${n.toFixed(2)}%`;
+    if (n < 0) return `${n.toFixed(2)}%`;
+    return "0.00%";
+}
+
 function CustomTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
-    const isPositive = d.profit_rate >= 0;
     return (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 px-4 py-3 text-sm">
             <p className="text-gray-400 mb-1">{label}</p>
-            {/* 양수 → text-blue-500, 음수 → text-red-500 */}
-            <p className={`text-xl font-black ${isPositive ? "text-red-500" : "text-blue-500"}`}>
-                {isPositive ? "+" : ""}{d.profit_rate}%
+            <p className={`text-xl font-black ${rateColor(d.profit_rate)}`}>
+                {fmtRate(d.profit_rate)}
             </p>
             <p className="text-gray-500 mt-0.5">
                 총 자산:{" "}
@@ -73,7 +87,6 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
 
     const displayRate = liveRate ?? chartData.at(-1)?.profit_rate ?? 0;
     const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
-    const isPositive = Number(displayRate) >= 0;
 
     const handleChartMouseMove = (e) => {
         if (!chartWrapRef.current || !e) return;
@@ -117,9 +130,9 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
-                    {/* 양수 → text-blue-500, 음수 → text-red-500 */}
-                    <p className={`text-3xl font-black ${isPositive ? "text-red-500" : "text-blue-500"}`}>
-                        {isPositive ? "+" : ""}{Number(displayRate).toFixed(2)}%
+                    {/* 양수=+빨간색 / 음수=-파란색 / 0=검은색 */}
+                    <p className={`text-3xl font-black ${rateColor(displayRate)}`}>
+                        {fmtRate(displayRate)}
                     </p>
                 </div>
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
