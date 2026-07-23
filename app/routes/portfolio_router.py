@@ -37,13 +37,6 @@ FOX_ETFS = {
 
 
 def get_realtime_price(symbol: str, fallback: float) -> float:
-    """
-    우선순위:
-    1. 프리/애프터마켓 가격 (info 딕셔너리)
-    2. 정규장 현재가 (regularMarketPrice)
-    3. 1분봉 prepost=True 최신 종가
-    4. fallback (평균 단가)
-    """
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
@@ -75,7 +68,6 @@ def get_realtime_price(symbol: str, fallback: float) -> float:
 
 
 def _build_portfolio_response(items, cash):
-    """공통 포트폴리오 응답 빌더"""
     portfolio_list = []
     total_market_value = 0
 
@@ -129,7 +121,6 @@ def get_portfolio():
     """인더스트리곰 전용 (bear)"""
     db = SessionLocal()
     try:
-        # ✅ agent='bear' 계좌 우선, 없으면 첫 번째 계좌 (하위 호환)
         account = (
             db.query(Account).filter(Account.agent == "bear").first()
             or db.query(Account).first()
@@ -142,7 +133,6 @@ def get_portfolio():
             .all()
         )
 
-        # agent 컬럼 없는 기존 데이터 제외 (FOX/TURTLE ETF가 아닌 것)
         bear_symbols = set(TURTLE_ETFS) | set(FOX_ETFS)
         items = [i for i in items if i.symbol not in bear_symbols] or items
 
@@ -161,7 +151,6 @@ def get_fox_portfolio():
 
     db = SessionLocal()
     try:
-        # ✅ fox 전용 계좌
         account = (
             db.query(Account).filter(Account.agent == "fox").first()
             or db.query(Account).first()
@@ -170,7 +159,6 @@ def get_fox_portfolio():
     finally:
         db.close()
 
-    # fox는 JSON 파일에 포트폴리오 저장 (momentum_fox_agent.py 방식 유지)
     if PORT_FILE.exists():
         try:
             raw = json.loads(PORT_FILE.read_text(encoding="utf-8"))
@@ -236,14 +224,21 @@ def get_turtle_portfolio():
     """배당거북 전용 (turtle)"""
     db = SessionLocal()
     try:
-        # ✅ turtle 전용 계좌
         account = (
             db.query(Account).filter(Account.agent == "turtle").first()
             or db.query(Account).first()
         )
         cash = account.cash if account else 0
 
-        items = db.query(Portfolio).filter(Portfolio.symbol.in_(TURTLE_ETFS)).all()
+        # ✅ 핵심 수정: agent='turtle' 필터 추가 — bear가 매수한 SOXX/XLU 혼입 차단
+        items = (
+            db.query(Portfolio)
+            .filter(
+                Portfolio.agent == "turtle",
+                Portfolio.symbol.in_(TURTLE_ETFS),
+            )
+            .all()
+        )
 
         return _build_portfolio_response(items, cash)
     finally:
@@ -254,29 +249,27 @@ def get_turtle_portfolio():
 def get_turtle_dividend():
     """
     배당거북 누적 배당금 계산
-    ─ 계산 방식:
-      1. Trade 테이블에서 배당거북 ETF의 BUY 이력 조회
-         (보유 시작일 = 최초 매수일)
-      2. yfinance dividends 이력에서 보유 기간 중 실제 지급된 배당금 합산
-         누적배당금 += 배당지급일 당시 보유수량 × 주당배당금
-      3. 현재 보유 중인 종목은 Portfolio 테이블 수량 사용
-      4. 반환: 종목별 누적배당금 + 전체 합계
     """
     db = SessionLocal()
     try:
         from datetime import datetime, timezone
         import pandas as pd
 
+        # ✅ 핵심 수정: agent='turtle' 필터 추가 — bear 포지션 혼입 차단
         holdings = {
             item.symbol: item.quantity
             for item in db.query(Portfolio)
-            .filter(Portfolio.symbol.in_(TURTLE_ETFS))
+            .filter(
+                Portfolio.agent == "turtle",
+                Portfolio.symbol.in_(TURTLE_ETFS),
+            )
             .all()
         }
 
         buy_trades = (
             db.query(Trade)
             .filter(
+                Trade.agent == "turtle",  # ✅ agent 필터 추가
                 Trade.symbol.in_(list(TURTLE_ETFS)),
                 Trade.action.in_(["BUY", "buy"]),
             )
@@ -286,7 +279,6 @@ def get_turtle_dividend():
         first_buy: dict[str, datetime] = {}
         for t in buy_trades:
             sym = t.symbol
-            # ✅ created_at 컬럼 정상 참조
             if hasattr(t, "created_at") and t.created_at:
                 ts = t.created_at
                 if ts.tzinfo is None:
@@ -357,11 +349,8 @@ def get_turtle_dividend():
         db.close()
 
 
-# ── 기존 코드 맨 아래에 추가 ──
-
-
 def get_bear_portfolio_internal():
-    """bear 포트폴리오 내부 호출용 (라우터 없이 직접 호출 가능)"""
+    """bear 포트폴리오 내부 호출용"""
     db = SessionLocal()
     try:
         account = (
