@@ -6,39 +6,82 @@ from app.db.models import AgentLog
 
 router = APIRouter()
 
+# ── 에이전트별 로그 조회 ──────────────────────────────────
+
 
 @router.get("/ai-logs")
 def get_ai_logs():
-    """최근 20개 bear 로그 반환 — 파싱 실패 행도 raw로 포함"""
+    """인더스트리곰(bear) 전체 로그 — 최신순, 한도 없음"""
+    return _get_logs_by_agent("bear")
+
+
+@router.get("/ai-logs/fox")
+def get_fox_ai_logs():
+    """모멘텀여우(fox) 전체 로그 — 최신순, 한도 없음"""
+    return _get_logs_by_agent("fox")
+
+
+@router.get("/ai-logs/turtle")
+def get_turtle_ai_logs():
+    """배당거북(turtle) 전체 로그 — 최신순, 한도 없음"""
+    return _get_logs_by_agent("turtle")
+
+
+@router.get("/ai-logs/all")
+def get_all_ai_logs():
+    """전체 에이전트 로그 — 최신순, 한도 없음"""
     db = SessionLocal()
     try:
-        rows = (
-            db.query(AgentLog)
-            .filter(AgentLog.agent == "bear")
-            .order_by(AgentLog.id.desc())
-            .limit(20)
-            .all()
-        )
-        result = []
-        for row in rows:
-            try:
-                parsed = json.loads(row.data)
-                parsed["_log_id"] = row.id
-                result.append(parsed)
-            except Exception:
-                result.append(
-                    {"_log_id": row.id, "raw": row.data[:200], "status": "PARSE_ERROR"}
-                )
-        return result
+        rows = db.query(AgentLog).order_by(AgentLog.id.desc()).all()
+        return _parse_rows(rows)
     except Exception as e:
         return [{"status": "DB_ERROR", "error": str(e)}]
     finally:
         db.close()
 
 
+def _get_logs_by_agent(agent: str) -> list:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(AgentLog)
+            .filter(AgentLog.agent == agent)
+            .order_by(AgentLog.id.desc())
+            .all()
+        )
+        return _parse_rows(rows)
+    except Exception as e:
+        return [{"status": "DB_ERROR", "error": str(e)}]
+    finally:
+        db.close()
+
+
+def _parse_rows(rows) -> list:
+    result = []
+    for row in rows:
+        try:
+            parsed = json.loads(row.data)
+            parsed["_log_id"] = row.id
+            parsed["_agent"] = row.agent
+            result.append(parsed)
+        except Exception:
+            result.append(
+                {
+                    "_log_id": row.id,
+                    "_agent": row.agent,
+                    "raw": row.data[:200],
+                    "status": "PARSE_ERROR",
+                }
+            )
+    return result
+
+
+# ── 특정 로그 상세 조회 ──────────────────────────────────
+
+
 @router.get("/ai-logs/detail/{log_id}")
 def get_ai_log_detail(log_id: int):
-    """특정 로그 ID의 전체 내용 반환 (traceback 포함)"""
+    """특정 로그 ID 전체 내용 반환 (traceback 포함)"""
     db = SessionLocal()
     try:
         row = db.query(AgentLog).filter(AgentLog.id == log_id).first()
@@ -47,20 +90,43 @@ def get_ai_log_detail(log_id: int):
         try:
             parsed = json.loads(row.data)
             parsed["_log_id"] = row.id
+            parsed["_agent"] = row.agent
             return parsed
         except Exception:
-            return {"_log_id": row.id, "raw": row.data}
+            return {"_log_id": row.id, "_agent": row.agent, "raw": row.data}
     finally:
         db.close()
 
 
+# ── 로그 삭제 ──────────────────────────────────────────
+
+
 @router.delete("/ai-logs")
 def clear_ai_logs():
+    """인더스트리곰(bear) 로그 전체 삭제"""
+    return _clear_logs_by_agent("bear")
+
+
+@router.delete("/ai-logs/fox")
+def clear_fox_ai_logs():
+    """모멘텀여우(fox) 로그 전체 삭제"""
+    return _clear_logs_by_agent("fox")
+
+
+@router.delete("/ai-logs/turtle")
+def clear_turtle_ai_logs():
+    """배당거북(turtle) 로그 전체 삭제"""
+    return _clear_logs_by_agent("turtle")
+
+
+@router.delete("/ai-logs/all")
+def clear_all_ai_logs():
+    """전체 에이전트 로그 삭제"""
     db = SessionLocal()
     try:
-        db.query(AgentLog).filter(AgentLog.agent == "bear").delete()
+        db.query(AgentLog).delete()
         db.commit()
-        return {"ok": True, "message": "bear 로그 초기화 완료"}
+        return {"ok": True, "message": "전체 에이전트 로그 삭제 완료"}
     except Exception as e:
         db.rollback()
         return {"ok": False, "error": str(e)}
@@ -68,9 +134,25 @@ def clear_ai_logs():
         db.close()
 
 
+def _clear_logs_by_agent(agent: str) -> dict:
+    db = SessionLocal()
+    try:
+        db.query(AgentLog).filter(AgentLog.agent == agent).delete()
+        db.commit()
+        return {"ok": True, "message": f"{agent} 로그 삭제 완료"}
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+# ── 진단 ──────────────────────────────────────────────
+
+
 @router.get("/ai-logs/debug")
 def debug_ai_logs():
-    """DB 연결 상태 및 로그 개수 진단"""
+    """DB 연결 상태 및 에이전트별 로그 개수 진단"""
     import traceback
     from app.db.database import engine
     from app.db.models import Base
@@ -90,56 +172,37 @@ def debug_ai_logs():
 
     try:
         db = SessionLocal()
-        total = db.query(AgentLog).count()
-        bear_total = db.query(AgentLog).filter(AgentLog.agent == "bear").count()
-        # 최근 3개 로그 요약
-        recent = (
-            db.query(AgentLog)
-            .filter(AgentLog.agent == "bear")
-            .order_by(AgentLog.id.desc())
-            .limit(3)
-            .all()
-        )
-        db.close()
-        result["total_logs"] = total
-        result["bear_logs"] = bear_total
-        result["recent_summaries"] = []
-        for row in recent:
-            try:
-                d = json.loads(row.data)
-                result["recent_summaries"].append(
-                    {
+        result["log_counts"] = {
+            "bear": db.query(AgentLog).filter(AgentLog.agent == "bear").count(),
+            "fox": db.query(AgentLog).filter(AgentLog.agent == "fox").count(),
+            "turtle": db.query(AgentLog).filter(AgentLog.agent == "turtle").count(),
+            "total": db.query(AgentLog).count(),
+        }
+        # 에이전트별 최근 1개 요약
+        summaries = {}
+        for agent in ("bear", "fox", "turtle"):
+            row = (
+                db.query(AgentLog)
+                .filter(AgentLog.agent == agent)
+                .order_by(AgentLog.id.desc())
+                .first()
+            )
+            if row:
+                try:
+                    d = json.loads(row.data)
+                    summaries[agent] = {
                         "id": row.id,
                         "timestamp": d.get("timestamp"),
                         "status": d.get("status", d.get("action", "?")),
                         "note": d.get("note", "")[:80],
                     }
-                )
-            except Exception:
-                result["recent_summaries"].append({"id": row.id, "raw": row.data[:80]})
-    except Exception as e:
-        result["db_query_error"] = traceback.format_exc()
-
-    try:
-        db = SessionLocal()
-        test_entry = AgentLog(
-            agent="bear",
-            data=json.dumps(
-                {
-                    "agent": "인더스트리곰",
-                    "status": "DEBUG_TEST",
-                    "action": "DEBUG_TEST",
-                    "note": "진단용 테스트 로그",
-                },
-                ensure_ascii=False,
-            ),
-        )
-        db.add(test_entry)
-        db.commit()
-        db.refresh(test_entry)
-        result["test_insert"] = f"ok — id={test_entry.id}"
+                except Exception:
+                    summaries[agent] = {"id": row.id, "raw": row.data[:80]}
+            else:
+                summaries[agent] = None
+        result["latest_by_agent"] = summaries
         db.close()
     except Exception as e:
-        result["test_insert"] = f"ERROR: {traceback.format_exc()}"
+        result["db_query_error"] = traceback.format_exc()
 
     return result

@@ -1,15 +1,39 @@
 # app/routes/turtle_logs_router.py
 import json
 from fastapi import APIRouter
+from app.db.database import SessionLocal
+from app.db.models import AgentLog
 
 router = APIRouter()
-LOG_FILE = "logs/turtle_logs.json"
 
 
 @router.get("/turtle-logs")
 def get_turtle_logs():
+    """배당거북(turtle) 로그 — DB 기반, 전체 최신순"""
+    db = SessionLocal()
     try:
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+        rows = (
+            db.query(AgentLog)
+            .filter(AgentLog.agent == "turtle")
+            .order_by(AgentLog.id.desc())
+            .all()
+        )
+        result = []
+        for row in rows:
+            try:
+                parsed = json.loads(row.data)
+                parsed["_log_id"] = row.id
+                result.append(parsed)
+            except Exception:
+                result.append(
+                    {
+                        "_log_id": row.id,
+                        "raw": row.data[:200],
+                        "status": "PARSE_ERROR",
+                    }
+                )
+        return result
+    except Exception as e:
+        return [{"status": "DB_ERROR", "error": str(e)}]
+    finally:
+        db.close()
