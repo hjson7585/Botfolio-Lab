@@ -14,7 +14,7 @@ const AGENT_CONFIGS = [
         style: "중장기 섹터 추세 추종",
         strategy: "모멘텀·뉴스 감성 스코어로 ETF 선별",
         path: "/agent/industry-bear",
-        endpoint: "/portfolio",
+        endpoint: "/bear-portfolio",   // ✅ /portfolio → /bear-portfolio 로 통일
     },
     {
         id: 2,
@@ -45,7 +45,7 @@ function Home({ user, login, logout }) {
 
     // 에이전트별 실시간 수익률 상태
     const [profitMap, setProfitMap] = useState({
-        "/portfolio": null,
+        "/bear-portfolio": null,   // ✅ 키도 통일
         "/fox-portfolio": null,
         "/turtle-portfolio": null,
     });

@@ -20,14 +20,14 @@ const AGENT_COLOR = {
     turtle: "#10B981",
 };
 
-// ── 수익률 색상 헬퍼 (양수=빨간색 / 음수=파란색 / 0=검은색) ──
+// ── 수익률 색상 (양수=빨간 / 음수=파란 / 0=검은) ──────────
 function rateColor(v) {
     const n = Number(v);
     if (v == null || isNaN(n) || n === 0) return "text-gray-900";
     return n > 0 ? "text-red-500" : "text-blue-500";
 }
 
-// ── 수익률 포맷 (양수=+, 음수=-, 0=0.00%) ──
+// ── 수익률 포맷 (양수=+X.XX% / 음수=-X.XX% / 0=0.00%) ──────
 function fmtRate(v) {
     const n = Number(v);
     if (v == null || isNaN(n)) return "-";
@@ -130,7 +130,7 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
-                    {/* 양수=+빨간색 / 음수=-파란색 / 0=검은색 */}
+                    {/* 양수=+빨간 / 음수=−파란 / 0=검은 */}
                     <p className={`text-3xl font-black ${rateColor(displayRate)}`}>
                         {fmtRate(displayRate)}
                     </p>
