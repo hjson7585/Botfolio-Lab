@@ -27,8 +27,8 @@ function CustomTooltip({ active, payload, label }) {
     return (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 px-4 py-3 text-sm">
             <p className="text-gray-400 mb-1">{label}</p>
-            {/* ✅ 수정: 양수 → text-red-500, 음수 → text-blue-500 */}
-            <p className={`text-xl font-black ${isPositive ? "text-red-500" : "text-blue-500"}`}>
+            {/* 양수 → text-blue-500, 음수 → text-red-500 */}
+            <p className={`text-xl font-black ${isPositive ? "text-blue-500" : "text-red-500"}`}>
                 {isPositive ? "+" : ""}{d.profit_rate}%
             </p>
             <p className="text-gray-500 mt-0.5">
@@ -117,8 +117,8 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
-                    {/* ✅ 수정: 양수 → text-red-500, 음수 → text-blue-500 */}
-                    <p className={`text-3xl font-black ${isPositive ? "text-red-500" : "text-blue-500"}`}>
+                    {/* 양수 → text-blue-500, 음수 → text-red-500 */}
+                    <p className={`text-3xl font-black ${isPositive ? "text-blue-500" : "text-red-500"}`}>
                         {isPositive ? "+" : ""}{Number(displayRate).toFixed(2)}%
                     </p>
                 </div>
