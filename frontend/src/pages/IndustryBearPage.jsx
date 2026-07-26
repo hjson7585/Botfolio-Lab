@@ -213,7 +213,6 @@ export default function IndustryBearPage() {
                 setPortfolioData(d);
                 setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
             })
-            // ✅ 수정: fetch 실패 시 초기 상태 유지 (undefined 방지)
             .catch(() => {
                 setPortfolioData({ portfolio: [], cash: null, total_asset: null, profit_rate: null });
             });
@@ -233,12 +232,12 @@ export default function IndustryBearPage() {
     const { portfolio, cash, total_asset, profit_rate } = portfolioData;
 
     return (
-        <div className="min-h-screen bg-[#f5f7fb] p-10">
+        <div className="min-h-screen bg-[#f5f7fb] p-4 sm:p-6 md:p-10">
 
-            <div className="flex gap-8 items-start mb-8">
+            <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start mb-6 md:mb-8">
 
-                {/* 왼쪽: 로고 + 자금현황 */}
-                <div className="w-72 shrink-0 bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
+                {/* 사이드바: 로고 + 자금현황 */}
+                <div className="w-full md:w-72 md:shrink-0 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 flex flex-col gap-5 md:gap-6">
                     <div className="flex flex-col items-center gap-3">
                         <div className="rounded-full flex items-center justify-center text-4xl shadow-lg"
                             style={{ width: 88, height: 88, background: "linear-gradient(135deg,#3b82f6,#06b6d4)" }}>
@@ -250,7 +249,7 @@ export default function IndustryBearPage() {
                         </p>
                     </div>
 
-                    <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-1 gap-3">
                         <div className={`rounded-2xl px-5 py-4 border transition-all duration-300 ${flash ? "bg-yellow-50 border-yellow-200" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-xs text-gray-400 mb-1">실시간 수익률</p>
                             <p className={`text-xl font-black transition-all duration-300 ${profitColor(profit_rate)}`}>
@@ -279,42 +278,40 @@ export default function IndustryBearPage() {
                     )}
                 </div>
 
-                {/* 오른쪽: ETF 목록 */}
-                <div className="flex-1 bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-black text-gray-800">보유 ETF 목록</h2>
-                        <span className="text-sm text-gray-400">보유 비중 및 실시간 상세 정보</span>
+                {/* 보유 ETF 목록 */}
+                <div className="w-full flex-1 bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-5 md:mb-6">
+                        <h2 className="text-xl md:text-2xl font-black text-gray-800">보유 ETF 목록</h2>
+                        <span className="text-xs md:text-sm text-gray-400">보유 비중 및 실시간 상세 정보</span>
                     </div>
-                    <div className="flex gap-8">
-                        <div className="w-56 shrink-0">
-                            {/* ✅ 수정: ?? [] 로 undefined 방어 */}
+                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+                        <div className="w-full md:w-56 md:shrink-0 flex justify-center">
                             <DonutChart items={portfolio ?? []} />
                         </div>
                         <div className="flex-1 flex flex-col gap-4">
-                            {/* ✅ 수정: ?? [] 로 undefined 방어 */}
                             {(portfolio ?? []).length === 0 ? (
                                 <div className="flex items-center justify-center h-40 rounded-2xl bg-gray-50 text-gray-400 text-sm">
                                     보유 중인 ETF 데이터가 없습니다.
                                 </div>
                             ) : (
                                 portfolio.map((item) => (
-                                    <div key={item.symbol} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
-                                        <div className="flex items-start justify-between mb-4">
-                                            <h3 className="text-lg font-black text-gray-800">{item.symbol}</h3>
+                                    <div key={item.symbol} className="bg-gray-50 rounded-2xl p-4 md:p-5 border border-gray-100">
+                                        <div className="flex items-start justify-between mb-3 md:mb-4">
+                                            <h3 className="text-base md:text-lg font-black text-gray-800">{item.symbol}</h3>
                                             <span className="bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1.5 rounded-full">
                                                 {fmtPct(item.weight)}
                                             </span>
                                         </div>
-                                        <div className="grid grid-cols-4 gap-3">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
                                             {[
                                                 { label: "보유 수량", value: `${fmt(item.quantity)}주` },
                                                 { label: "평균 단가", value: `$${fmt(item.avg_price)}` },
                                                 { label: "현재가", value: `$${fmt(item.current_price)}` },
                                                 { label: "수익률", value: fmtPct(item.profit_rate), color: profitColor(item.profit_rate) },
                                             ].map(({ label, value, color }) => (
-                                                <div key={label} className="bg-white rounded-xl p-3 border border-gray-100">
+                                                <div key={label} className="bg-white rounded-xl p-2.5 md:p-3 border border-gray-100">
                                                     <p className="text-xs text-gray-400 mb-1">{label}</p>
-                                                    <p className={`font-bold text-sm ${color || "text-gray-800"}`}>{value}</p>
+                                                    <p className={`font-bold text-xs md:text-sm ${color || "text-gray-800"}`}>{value}</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -326,16 +323,16 @@ export default function IndustryBearPage() {
                 </div>
             </div>
 
-            {/* ✅ 실시간 총자산·수익률을 ProfitChart에 직접 전달 */}
+            {/* ProfitChart */}
             <div className="w-full">
                 <ProfitChart agent="bear" liveAsset={total_asset} liveRate={profit_rate} />
             </div>
 
-            {/* 판단 로그 */}
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-black text-gray-800">AI 판단 로그</h2>
-                    <span className="text-sm text-gray-400">최근 20건</span>
+            {/* AI 판단 로그 */}
+            <div className="bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-5 md:mb-6">
+                    <h2 className="text-xl md:text-2xl font-black text-gray-800">AI 판단 로그</h2>
+                    <span className="text-xs md:text-sm text-gray-400">최근 20건</span>
                 </div>
                 {logs.length === 0 ? (
                     <div className="flex items-center justify-center h-32 rounded-2xl bg-gray-50 text-gray-400 text-sm">
@@ -344,25 +341,25 @@ export default function IndustryBearPage() {
                 ) : (
                     <div className="flex flex-col gap-4">
                         {logs.map((log, i) => (
-                            <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-3">
+                            <div key={i} className="bg-gray-50 rounded-2xl p-4 md:p-5 border border-gray-100">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div className="flex flex-wrap items-center gap-2 md:gap-3">
                                         <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${log.action === "BUY" ? "bg-green-100 text-green-600" :
                                             log.action === "SELL" ? "bg-red-100 text-red-500" :
                                                 "bg-gray-200 text-gray-500"}`}>
                                             {log.action || "HOLD"}
                                         </span>
-                                        <strong className="text-gray-800 font-bold">
+                                        <strong className="text-gray-800 font-bold text-sm">
                                             {log.selected_etf && log.selected_etf !== "NONE" ? log.selected_etf : "-"}
                                         </strong>
                                         {log.sector && log.sector !== "NONE" && (
-                                            <span className="text-sm text-gray-400">{log.sector}</span>
+                                            <span className="text-xs md:text-sm text-gray-400">{log.sector}</span>
                                         )}
                                     </div>
                                     <span className="text-xs text-gray-300">{log.timestamp || ""}</span>
                                 </div>
                                 <p className="text-sm text-gray-600 mb-2">{log.reason || "-"}</p>
-                                <div className="flex gap-4 text-xs text-gray-300">
+                                <div className="flex flex-wrap gap-3 text-xs text-gray-300">
                                     <span>모델: {log.model || "-"}</span>
                                     <span>토큰: {log.total_tokens ?? "-"}</span>
                                     {log.trade_result && <span>매매결과: {log.trade_result}</span>}

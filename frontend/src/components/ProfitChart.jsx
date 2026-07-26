@@ -20,14 +20,12 @@ const AGENT_COLOR = {
     turtle: "#10B981",
 };
 
-// ── 수익률 색상 (양수=빨간 / 음수=파란 / 0=검은) ──────────
 function rateColor(v) {
     const n = Number(v);
     if (v == null || isNaN(n) || n === 0) return "text-gray-900";
     return n > 0 ? "text-red-500" : "text-blue-500";
 }
 
-// ── 수익률 포맷 (양수=+X.XX% / 음수=-X.XX% / 0=0.00%) ──────
 function fmtRate(v) {
     const n = Number(v);
     if (v == null || isNaN(n)) return "-";
@@ -102,19 +100,19 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
     };
 
     return (
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 mb-8">
+        <div className="bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-gray-100 mb-6 md:mb-8">
 
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5 md:mb-6">
                 <div>
-                    <h2 className="text-xl font-black text-gray-800">📈 실시간 수익률 추이</h2>
+                    <h2 className="text-lg md:text-xl font-black text-gray-800">📈 실시간 수익률 추이</h2>
                     <p className="text-xs text-gray-400 mt-0.5">초기 자본 $10,000 기준</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     {PERIOD_OPTIONS.map(({ key, label }) => (
                         <button
                             key={key}
                             onClick={() => setPeriod(key)}
-                            className={`text-xs font-bold px-4 py-2 rounded-full transition
+                            className={`text-xs font-bold px-3 md:px-4 py-2 rounded-full transition
                                 ${period === key
                                     ? "text-white"
                                     : "bg-gray-100 text-gray-400 hover:bg-gray-200"
@@ -127,32 +125,31 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
+            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-5 md:mb-6">
+                <div className="bg-gray-50 rounded-2xl px-4 md:px-5 py-3 md:py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
-                    {/* 양수=+빨간 / 음수=−파란 / 0=검은 */}
-                    <p className={`text-3xl font-black ${rateColor(displayRate)}`}>
+                    <p className={`text-2xl md:text-3xl font-black ${rateColor(displayRate)}`}>
                         {fmtRate(displayRate)}
                     </p>
                 </div>
-                <div className="bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
+                <div className="bg-gray-50 rounded-2xl px-4 md:px-5 py-3 md:py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 총 자산</p>
-                    <p className="text-3xl font-black text-gray-800">
+                    <p className="text-2xl md:text-3xl font-black text-gray-800">
                         ${Number(displayAsset).toLocaleString()}
                     </p>
                 </div>
             </div>
 
             {loading ? (
-                <div className="flex items-center justify-center h-48 text-gray-300 text-sm">
+                <div className="flex items-center justify-center h-40 md:h-48 text-gray-300 text-sm">
                     불러오는 중...
                 </div>
             ) : error ? (
-                <div className="flex items-center justify-center h-48 text-gray-300 text-sm">
+                <div className="flex items-center justify-center h-40 md:h-48 text-gray-300 text-sm">
                     데이터를 불러올 수 없습니다
                 </div>
             ) : (
-                <div ref={chartWrapRef} style={{ width: "100%", height: 260, minWidth: 0, position: "relative" }}>
+                <div ref={chartWrapRef} style={{ width: "100%", height: 220, minWidth: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%" debounce={1}>
                         <LineChart
                             data={
@@ -163,23 +160,23 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
                                         { date: "현재", profit_rate: displayRate, total_asset: displayAsset },
                                     ]
                             }
-                            margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                             onMouseMove={handleChartMouseMove}
                             onMouseLeave={handleChartMouseLeave}
                         >
                             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                             <XAxis
                                 dataKey="date"
-                                tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                tick={{ fontSize: 10, fill: "#9ca3af" }}
                                 tickLine={false}
                                 axisLine={false}
                             />
                             <YAxis
                                 domain={[minRate, maxRate]}
-                                tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                tick={{ fontSize: 10, fill: "#9ca3af" }}
                                 tickLine={false}
                                 axisLine={false}
-                                width={48}
+                                width={40}
                                 tickFormatter={(v) => `${v}%`}
                             />
                             <Tooltip
