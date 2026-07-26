@@ -112,20 +112,24 @@ function DonutChart({ items }) {
 
     const CX = 100, CY = 100, OUTER = 90, INNER = 52;
 
+    // ✅ 툴팁 위치를 wrapper 안으로 클램핑 (가로 스크롤 방지)
     const handleMove = (e, s) => {
-        const rect = wrapRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+        const rect = wrapRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 300 };
+        const rawX = e.clientX - rect.left + 16;
+        const clampedX = Math.min(rawX, rect.width - 200); // 툴팁폭 200 고려
         setHovered({
             symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol,
             weight: s.weight, color: s.color,
-            x: e.clientX - rect.left + 16,
+            x: Math.max(0, clampedX),
             y: e.clientY - rect.top - 12,
         });
     };
 
     return (
-        <div ref={wrapRef} className="flex flex-col items-center gap-4" style={{ position: "relative" }}>
+        <div ref={wrapRef} className="flex flex-col items-center gap-4 w-full" style={{ position: "relative", overflow: "hidden" }}>
+            {/* ✅ SVG overflow hidden으로 변경 */}
             <svg width={200} height={200} viewBox="0 0 200 200"
-                style={{ display: "block", overflow: "visible" }}
+                style={{ display: "block", overflow: "hidden" }}
                 onMouseLeave={() => setHovered(null)}>
                 {slices.map((s) => {
                     const gap = slices.length > 1 ? 1.5 : 0;
@@ -170,15 +174,21 @@ function DonutChart({ items }) {
                 )}
             </svg>
 
+            {/* ✅ 툴팁: position fixed + 화면 안에서만 표시 */}
             {hovered && (
                 <div style={{
-                    position: "absolute", left: hovered.x, top: hovered.y,
-                    pointerEvents: "none", zIndex: 999,
+                    position: "absolute",
+                    left: hovered.x,
+                    top: hovered.y,
+                    pointerEvents: "none",
+                    zIndex: 999,
                     background: "rgba(17,24,39,0.95)",
                     border: `1px solid ${hovered.color}66`,
-                    borderRadius: 12, padding: "10px 14px",
-                    boxShadow: `0 8px 24px rgba(0,0,0,0.25), 0 0 0 1px ${hovered.color}22`,
-                    minWidth: 200, backdropFilter: "blur(6px)",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    boxShadow: `0 8px 24px rgba(0,0,0,0.25)`,
+                    maxWidth: 200,
+                    backdropFilter: "blur(6px)",
                 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{ width: 10, height: 10, borderRadius: "50%", background: hovered.color, display: "inline-block", flexShrink: 0 }} />
@@ -190,30 +200,24 @@ function DonutChart({ items }) {
             )}
 
             <div className="w-full flex flex-col gap-2">
-                {slices.map((s) => {
-                    const type = ETF_TYPE[s.symbol];
-                    const ts = type ? TYPE_STYLE[type] : null;
-                    return (
-                        <div key={s.symbol}
-                            className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
-                            style={{
-                                background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
-                                border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
-                                cursor: "pointer",
-                            }}
-                            onMouseEnter={() => setHovered({ symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol, weight: s.weight, color: s.color, x: 220, y: 10 })}
-                            onMouseLeave={() => setHovered(null)}>
-                            <div className="flex items-center gap-2">
-                                <span className="inline-block rounded-full" style={{ width: 10, height: 10, background: s.color }} />
-                                <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
-                                {ts && (
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ts.bg} ${ts.text}`}>{type}</span>
-                                )}
-                            </div>
-                            <span className="text-sm font-bold" style={{ color: s.color }}>{fmtPct(s.weight)}</span>
+                {slices.map((s) => (
+                    <div key={s.symbol}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-150"
+                        style={{
+                            background: hovered?.symbol === s.symbol ? `${s.color}18` : "#f9fafb",
+                            border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
+                            cursor: "pointer",
+                        }}
+                        // ✅ x: 0으로 고정 (220이면 화면 초과)
+                        onMouseEnter={() => setHovered({ symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol, weight: s.weight, color: s.color, x: 0, y: 0 })}
+                        onMouseLeave={() => setHovered(null)}>
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block rounded-full" style={{ width: 10, height: 10, background: s.color }} />
+                            <span className="text-sm text-gray-700 font-medium">{s.symbol}</span>
                         </div>
-                    );
-                })}
+                        <span className="text-sm font-bold" style={{ color: s.color }}>{fmtPct(s.weight)}</span>
+                    </div>
+                ))}
             </div>
         </div>
     );
