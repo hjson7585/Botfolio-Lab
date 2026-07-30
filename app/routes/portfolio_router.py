@@ -5,6 +5,8 @@ from app.db.models import Portfolio, Account, Trade
 
 router = APIRouter()
 
+INITIAL_CAPITAL = 10_000.0  # ✅ 초기 자본 상수 — 수익률 기준
+
 TURTLE_ETFS = {
     "SCHD",
     "DGRO",
@@ -100,11 +102,9 @@ def _build_portfolio_response(items, cash):
             round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
         )
 
-    total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
-    profit_rate_total = (
-        round(((total_market_value - total_cost) / total_cost) * 100, 2)
-        if total_cost
-        else 0
+    # ✅ 수익률 기준 통일: 초기 자본 $10,000 대비 총자산 증감율
+    profit_rate_total = round(
+        ((total_asset - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100, 2
     )
 
     return {
@@ -203,11 +203,9 @@ def get_fox_portfolio():
             round((p["market_value"] / total_asset) * 100, 2) if total_asset else 0
         )
 
-    total_cost = sum(p["avg_price"] * p["quantity"] for p in portfolio_list)
-    profit_rate_total = (
-        round(((total_market_value - total_cost) / total_cost) * 100, 2)
-        if total_cost
-        else 0
+    # ✅ 수익률 기준 통일: 초기 자본 $10,000 대비
+    profit_rate_total = round(
+        ((total_asset - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100, 2
     )
 
     return {
@@ -230,7 +228,6 @@ def get_turtle_portfolio():
         )
         cash = account.cash if account else 0
 
-        # ✅ 핵심 수정: agent='turtle' 필터 추가 — bear가 매수한 SOXX/XLU 혼입 차단
         items = (
             db.query(Portfolio)
             .filter(
@@ -255,7 +252,6 @@ def get_turtle_dividend():
         from datetime import datetime, timezone
         import pandas as pd
 
-        # ✅ 핵심 수정: agent='turtle' 필터 추가 — bear 포지션 혼입 차단
         holdings = {
             item.symbol: item.quantity
             for item in db.query(Portfolio)
@@ -269,7 +265,7 @@ def get_turtle_dividend():
         buy_trades = (
             db.query(Trade)
             .filter(
-                Trade.agent == "turtle",  # ✅ agent 필터 추가
+                Trade.agent == "turtle",
                 Trade.symbol.in_(list(TURTLE_ETFS)),
                 Trade.action.in_(["BUY", "buy"]),
             )
