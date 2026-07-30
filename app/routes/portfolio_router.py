@@ -5,7 +5,7 @@ from app.db.models import Portfolio, Account, Trade
 
 router = APIRouter()
 
-INITIAL_CAPITAL = 10_000.0  # ✅ 초기 자본 상수 — 수익률 기준
+INITIAL_CAPITAL = 10_000.0  # ✅ 수익률 기준: 초기 자본
 
 TURTLE_ETFS = {
     "SCHD",
