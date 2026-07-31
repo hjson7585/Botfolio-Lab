@@ -14,7 +14,7 @@ import IndustryBearPage from "./pages/IndustryBearPage";
 import MomentumFoxPage from "./pages/MomentumFoxPage";
 import DividendTurtlePage from "./pages/DividendTurtlePage";
 import AdminPage from "./pages/AdminPage";
-
+import { PortfolioProvider } from "./context/PortfolioContext"; // ✅ 추가
 
 function App() {
     const [user, setUser] = useState(null);
@@ -45,23 +45,24 @@ function App() {
     const logout = async () => { try { await signOut(auth); } catch (e) { console.log(e); } };
 
     return (
-        <BrowserRouter>
-            <Routes>
-                <Route path="/" element={<Home user={user} login={login} logout={logout} />} />
-                <Route path="/agent/industry-bear" element={<IndustryBearPage />} />
-                <Route path="/momentum-fox" element={<MomentumFoxPage />} />
-                <Route path="/agent/dividend-turtle" element={<DividendTurtlePage />} />
-                <Route path="/admin"
-                    element={
-                        user?.email === "hjson7585@gmail.com"
-                            ? <AdminDashboard />
-                            : <Navigate to="/" />
-                    }
-
-                />
-                <Route path="/admin/control" element={<AdminPage />} />
-            </Routes>
-        </BrowserRouter>
+        <PortfolioProvider> {/* ✅ 추가 */}
+            <BrowserRouter>
+                <Routes>
+                    <Route path="/" element={<Home user={user} login={login} logout={logout} />} />
+                    <Route path="/agent/industry-bear" element={<IndustryBearPage />} />
+                    <Route path="/momentum-fox" element={<MomentumFoxPage />} />
+                    <Route path="/agent/dividend-turtle" element={<DividendTurtlePage />} />
+                    <Route path="/admin"
+                        element={
+                            user?.email === "hjson7585@gmail.com"
+                                ? <AdminDashboard />
+                                : <Navigate to="/" />
+                        }
+                    />
+                    <Route path="/admin/control" element={<AdminPage />} />
+                </Routes>
+            </BrowserRouter>
+        </PortfolioProvider>
     );
 }
 

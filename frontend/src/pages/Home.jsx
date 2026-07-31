@@ -1,9 +1,6 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AgentCard from "../components/AgentCard";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const REFRESH_MS = 2000;
+import { usePortfolio } from "../context/PortfolioContext"; // ✅ 추가
 
 const AGENT_CONFIGS = [
     {
@@ -14,7 +11,7 @@ const AGENT_CONFIGS = [
         style: "중장기 섹터 추세 추종",
         strategy: "모멘텀·뉴스 감성 스코어로 ETF 선별",
         path: "/agent/industry-bear",
-        endpoint: "/bear-portfolio",
+        key: "bearData", // ✅ Context 키로 변경
     },
     {
         id: 2,
@@ -24,7 +21,7 @@ const AGENT_CONFIGS = [
         style: "중단기 추세 추종",
         strategy: "시장 레짐을 판단해 상승 모멘텀 강한 ETF 매수",
         path: "/momentum-fox",
-        endpoint: "/fox-portfolio",
+        key: "foxData", // ✅
     },
     {
         id: 3,
@@ -34,7 +31,7 @@ const AGENT_CONFIGS = [
         style: "장기 인컴",
         strategy: "배당수익률·배당성장률 기반으로 우량 ETF를 장기 보유",
         path: "/agent/dividend-turtle",
-        endpoint: "/turtle-portfolio",
+        key: "turtleData", // ✅
     },
 ];
 
@@ -43,35 +40,11 @@ function Home({ user, login, logout }) {
     const ADMIN_EMAIL = "hjson7585@gmail.com";
     const isAdmin = user?.email === ADMIN_EMAIL;
 
-    const [profitMap, setProfitMap] = useState({
-        "/bear-portfolio": null,
-        "/fox-portfolio": null,
-        "/turtle-portfolio": null,
-    });
-
-    useEffect(() => {
-        const fetchAll = () => {
-            AGENT_CONFIGS.forEach(({ endpoint }) => {
-                fetch(`${API}${endpoint}`)
-                    .then((r) => r.json())
-                    .then((d) => {
-                        setProfitMap((prev) => ({
-                            ...prev,
-                            [endpoint]: d.profit_rate ?? null,
-                        }));
-                    })
-                    .catch(() => { });
-            });
-        };
-
-        fetchAll();
-        const timer = setInterval(fetchAll, REFRESH_MS);
-        return () => clearInterval(timer);
-    }, []);
+    const portfolioCtx = usePortfolio(); // ✅ Context에서 읽기
 
     const agents = AGENT_CONFIGS.map((cfg) => ({
         ...cfg,
-        profit: profitMap[cfg.endpoint],
+        profit: portfolioCtx?.[cfg.key]?.profit_rate ?? null, // ✅ Context 값 사용
     }));
 
     return (

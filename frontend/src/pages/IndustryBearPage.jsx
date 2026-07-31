@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProfitChart from "../components/ProfitChart";
+import { usePortfolio } from "../context/PortfolioContext";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const REFRESH_MS = 2000;
@@ -204,30 +205,32 @@ function DonutChart({ items }) {
 
 export default function IndustryBearPage() {
     const [logs, setLogs] = useState([]);
-    const [portfolioData, setPortfolioData] = useState({
-        portfolio: [], cash: null, total_asset: null, profit_rate: null,
-    });
     const [lastUpdated, setLastUpdated] = useState(null);
     const [flash, setFlash] = useState(false);
-    const timerRef = useRef(null);
     const prevProfitRef = useRef(null);
 
-    const fetchPortfolio = () => {
-        fetch(`${API}/bear-portfolio`)
+    // ✅ 핵심: 기존 fetchPortfolio + setInterval 완전 제거, Context에서 읽기
+    const { bearData } = usePortfolio();
+    const { portfolio, cash, total_asset, profit_rate } = bearData;
+
+    // ✅ profit_rate 변화 감지 → flash + lastUpdated 갱신
+    useEffect(() => {
+        if (profit_rate === null) return;
+        if (prevProfitRef.current !== null && prevProfitRef.current !== profit_rate) {
+            setFlash(true);
+            setTimeout(() => setFlash(false), 600);
+        }
+        prevProfitRef.current = profit_rate;
+        setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
+    }, [profit_rate]);
+
+    // ✅ AI 로그: 기존 1회 fetch 그대로 유지
+    useEffect(() => {
+        fetch(`${API}/ai-logs`)
             .then((r) => r.json())
-            .then((d) => {
-                if (prevProfitRef.current !== null && prevProfitRef.current !== d.profit_rate) {
-                    setFlash(true);
-                    setTimeout(() => setFlash(false), 600);
-                }
-                prevProfitRef.current = d.profit_rate;
-                setPortfolioData(d);
-                setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
-            })
-            .catch(() => {
-                setPortfolioData({ portfolio: [], cash: null, total_asset: null, profit_rate: null });
-            });
-    };
+            .then((d) => setLogs(Array.isArray(d) ? d : []))
+            .catch(() => { });
+    }, []);
 
     useEffect(() => {
         fetch(`${API}/ai-logs`)
