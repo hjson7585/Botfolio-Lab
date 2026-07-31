@@ -83,8 +83,12 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
         return { minRate: Math.floor(min - pad), maxRate: Math.ceil(max + pad) };
     }, [chartData]);
 
-    const displayRate = liveRate ?? chartData.at(-1)?.profit_rate ?? 0;
-    const displayAsset = liveAsset ?? chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL;
+    const displayRate = liveRate !== null && liveRate !== undefined
+        ? liveRate
+        : (chartData.at(-1)?.profit_rate ?? 0);
+    const displayAsset = liveAsset !== null && liveAsset !== undefined
+        ? liveAsset
+        : (chartData.at(-1)?.total_asset ?? INITIAL_CAPITAL);
 
     const handleChartMouseMove = (e) => {
         if (!chartWrapRef.current || !e) return;
