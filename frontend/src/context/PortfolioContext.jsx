@@ -20,7 +20,7 @@ export function PortfolioProvider({ children }) {
 
     useEffect(() => {
         const fetchAll = () => {
-            fetch(`${API}/bear-portfolio`)
+            fetch(`${API}/portfolio`)
                 .then((r) => r.json())
                 .then((d) => setBearData(d))
                 .catch(() => { });
