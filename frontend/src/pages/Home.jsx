@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import AgentCard from "../components/AgentCard";
-import { usePortfolio } from "../context/PortfolioContext"; // ✅ 추가
+import { usePortfolio } from "../context/PortfolioContext";
 
 const AGENT_CONFIGS = [
     {
@@ -11,7 +11,7 @@ const AGENT_CONFIGS = [
         style: "중장기 섹터 추세 추종",
         strategy: "모멘텀·뉴스 감성 스코어로 ETF 선별",
         path: "/agent/industry-bear",
-        key: "bearData", // ✅ Context 키로 변경
+        key: "bearData",
     },
     {
         id: 2,
@@ -21,7 +21,7 @@ const AGENT_CONFIGS = [
         style: "중단기 추세 추종",
         strategy: "시장 레짐을 판단해 상승 모멘텀 강한 ETF 매수",
         path: "/momentum-fox",
-        key: "foxData", // ✅
+        key: "foxData",
     },
     {
         id: 3,
@@ -31,7 +31,7 @@ const AGENT_CONFIGS = [
         style: "장기 인컴",
         strategy: "배당수익률·배당성장률 기반으로 우량 ETF를 장기 보유",
         path: "/agent/dividend-turtle",
-        key: "turtleData", // ✅
+        key: "turtleData",
     },
 ];
 
@@ -40,12 +40,15 @@ function Home({ user, login, logout }) {
     const ADMIN_EMAIL = "hjson7585@gmail.com";
     const isAdmin = user?.email === ADMIN_EMAIL;
 
-    const portfolioCtx = usePortfolio(); // ✅ Context에서 읽기
+    const portfolioCtx = usePortfolio();
 
-    const agents = AGENT_CONFIGS.map((cfg) => ({
-        ...cfg,
-        profit: portfolioCtx?.[cfg.key]?.profit_rate ?? null, // ✅ Context 값 사용
-    }));
+    const agents = AGENT_CONFIGS.map((cfg) => {
+        const data = portfolioCtx?.[cfg.key];
+        return {
+            ...cfg,
+            profit: data?.profit_rate ?? null,
+        };
+    });
 
     return (
         <div className="min-h-screen bg-[#f5f7fb]">

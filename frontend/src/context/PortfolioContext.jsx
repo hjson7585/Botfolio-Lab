@@ -5,16 +5,23 @@ const REFRESH_MS = 2000;
 
 const PortfolioContext = createContext(null);
 
+const DEFAULT_STATE = {
+    portfolio: [], cash: null, total_asset: null, profit_rate: null,
+};
+
+function parsePortfolio(d) {
+    return {
+        portfolio: Array.isArray(d?.portfolio) ? d.portfolio : [],
+        cash: d?.cash ?? null,
+        total_asset: d?.total_asset ?? null,
+        profit_rate: d?.profit_rate ?? null,
+    };
+}
+
 export function PortfolioProvider({ children }) {
-    const [bearData, setBearData] = useState({
-        portfolio: [], cash: null, total_asset: null, profit_rate: null,
-    });
-    const [foxData, setFoxData] = useState({
-        portfolio: [], cash: null, total_asset: null, profit_rate: null,
-    });
-    const [turtleData, setTurtleData] = useState({
-        portfolio: [], cash: null, total_asset: null, profit_rate: null,
-    });
+    const [bearData, setBearData] = useState({ ...DEFAULT_STATE });
+    const [foxData, setFoxData] = useState({ ...DEFAULT_STATE });
+    const [turtleData, setTurtleData] = useState({ ...DEFAULT_STATE });
 
     const timerRef = useRef(null);
 
@@ -22,17 +29,17 @@ export function PortfolioProvider({ children }) {
         const fetchAll = () => {
             fetch(`${API}/portfolio`)
                 .then((r) => r.json())
-                .then((d) => setBearData(d))
+                .then((d) => setBearData(parsePortfolio(d)))
                 .catch(() => { });
 
             fetch(`${API}/fox-portfolio`)
                 .then((r) => r.json())
-                .then((d) => setFoxData(d))
+                .then((d) => setFoxData(parsePortfolio(d)))
                 .catch(() => { });
 
             fetch(`${API}/turtle-portfolio`)
                 .then((r) => r.json())
-                .then((d) => setTurtleData(d))
+                .then((d) => setTurtleData(parsePortfolio(d)))
                 .catch(() => { });
         };
 
