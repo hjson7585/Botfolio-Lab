@@ -3,7 +3,6 @@ import ProfitChart from "../components/ProfitChart";
 import { usePortfolio } from "../context/PortfolioContext";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const REFRESH_MS = 2000;
 
 function fmt(v) {
     if (v == null || v === "") return "-";
@@ -92,11 +91,10 @@ function DonutChart({ items }) {
 
     const CX = 100, CY = 100, OUTER = 90, INNER = 52;
 
-    // ✅ 툴팁 위치를 wrapper 안으로 클램핑 (가로 스크롤 방지)
     const handleMove = (e, s) => {
         const rect = wrapRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 300 };
         const rawX = e.clientX - rect.left + 16;
-        const clampedX = Math.min(rawX, rect.width - 200); // 툴팁폭 200 고려
+        const clampedX = Math.min(rawX, rect.width - 200);
         setHovered({
             symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol,
             weight: s.weight, color: s.color,
@@ -107,7 +105,6 @@ function DonutChart({ items }) {
 
     return (
         <div ref={wrapRef} className="flex flex-col items-center gap-4 w-full" style={{ position: "relative", overflow: "hidden" }}>
-            {/* ✅ SVG overflow hidden으로 변경 */}
             <svg width={200} height={200} viewBox="0 0 200 200"
                 style={{ display: "block", overflow: "hidden" }}
                 onMouseLeave={() => setHovered(null)}>
@@ -154,7 +151,6 @@ function DonutChart({ items }) {
                 )}
             </svg>
 
-            {/* ✅ 툴팁: position fixed + 화면 안에서만 표시 */}
             {hovered && (
                 <div style={{
                     position: "absolute",
@@ -188,7 +184,6 @@ function DonutChart({ items }) {
                             border: `1px solid ${hovered?.symbol === s.symbol ? s.color + "44" : "transparent"}`,
                             cursor: "pointer",
                         }}
-                        // ✅ x: 0으로 고정 (220이면 화면 초과)
                         onMouseEnter={() => setHovered({ symbol: s.symbol, name: ETF_NAMES[s.symbol] || s.symbol, weight: s.weight, color: s.color, x: 0, y: 0 })}
                         onMouseLeave={() => setHovered(null)}>
                         <div className="flex items-center gap-2">
@@ -209,11 +204,11 @@ export default function IndustryBearPage() {
     const [flash, setFlash] = useState(false);
     const prevProfitRef = useRef(null);
 
-    // ✅ 핵심: 기존 fetchPortfolio + setInterval 완전 제거, Context에서 읽기
+    // ✅ Context에서만 읽기 (중복 선언 제거)
     const { bearData } = usePortfolio();
     const { portfolio, cash, total_asset, profit_rate } = bearData;
 
-    // ✅ profit_rate 변화 감지 → flash + lastUpdated 갱신
+    // profit_rate 변화 감지 → flash + lastUpdated 갱신
     useEffect(() => {
         if (profit_rate === null) return;
         if (prevProfitRef.current !== null && prevProfitRef.current !== profit_rate) {
@@ -224,26 +219,13 @@ export default function IndustryBearPage() {
         setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
     }, [profit_rate]);
 
-    // ✅ AI 로그: 기존 1회 fetch 그대로 유지
+    // AI 로그: 1회 fetch
     useEffect(() => {
         fetch(`${API}/ai-logs`)
             .then((r) => r.json())
             .then((d) => setLogs(Array.isArray(d) ? d : []))
             .catch(() => { });
     }, []);
-
-    useEffect(() => {
-        fetch(`${API}/ai-logs`)
-            .then((r) => r.json())
-            .then((d) => setLogs(Array.isArray(d) ? d : []))
-            .catch(() => { });
-
-        fetchPortfolio();
-        timerRef.current = setInterval(fetchPortfolio, REFRESH_MS);
-        return () => clearInterval(timerRef.current);
-    }, []);
-
-    const { portfolio, cash, total_asset, profit_rate } = portfolioData;
 
     return (
         <div className="min-h-screen bg-[#f5f7fb] p-4 sm:p-6 md:p-10">
