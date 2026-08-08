@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+watchPatterns = ["app/**", "requirements.txt", "runtime.txt"]
 
 [deploy]
 startCommand = "uvicorn app.main:api --host 0.0.0.0 --port $PORT"
