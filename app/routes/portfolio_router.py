@@ -127,14 +127,14 @@ def get_portfolio():
         )
         cash = account.cash if account else 0
 
-        items = (
-            db.query(Portfolio)
-            .filter((Portfolio.agent == "bear") | (Portfolio.agent == None))
-            .all()
-        )
+        # ✅ agent == "bear"로만 명확히 필터링 (fox/turtle ETF 교집합 오염 방지)
+        items = db.query(Portfolio).filter(Portfolio.agent == "bear").all()
 
-        bear_symbols = set(TURTLE_ETFS) | set(FOX_ETFS)
-        items = [i for i in items if i.symbol not in bear_symbols] or items
+        # bear 전용 데이터가 없을 경우에만 agent 미설정 항목 fallback
+        if not items:
+            bear_exclude = set(TURTLE_ETFS) | set(FOX_ETFS)
+            all_items = db.query(Portfolio).filter(Portfolio.agent == None).all()
+            items = [i for i in all_items if i.symbol not in bear_exclude]
 
         return _build_portfolio_response(items, cash)
     finally:
