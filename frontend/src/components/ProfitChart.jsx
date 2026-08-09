@@ -26,6 +26,13 @@ function rateColor(v) {
     return n > 0 ? "text-red-500" : "text-blue-500";
 }
 
+// 추가되는 함수 (기존 rateColor 아래에 삽입)
+function rateInlineColor(v) {
+    const n = Number(v);
+    if (v == null || isNaN(n) || n === 0) return "#111827"; // 검정
+    return n > 0 ? "#ef4444" : "#3b82f6";                  // 빨강 / 파랑
+}
+
 function fmtRate(v) {
     const n = Number(v);
     if (v == null || isNaN(n)) return "-";
@@ -132,7 +139,10 @@ export default function ProfitChart({ agent, liveAsset, liveRate }) {
             <div className="grid grid-cols-2 gap-3 md:gap-4 mb-5 md:mb-6">
                 <div className="bg-gray-50 rounded-2xl px-4 md:px-5 py-3 md:py-4 border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">현재 수익률</p>
-                    <p className={`text-2xl md:text-3xl font-black ${rateColor(displayRate)}`}>
+                    <p
+                        className="text-2xl md:text-3xl font-black"
+                        style={{ color: rateInlineColor(displayRate) }}
+                    >
                         {fmtRate(displayRate)}
                     </p>
                 </div>
