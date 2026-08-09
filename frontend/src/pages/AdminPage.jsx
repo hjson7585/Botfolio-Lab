@@ -1,3 +1,13 @@
+import { useState } from "react";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+const AGENTS = [
+    { key: "bear", label: "🐻 인더스트리베어", color: "#3B82F6", disabled: false },
+    { key: "fox", label: "🦊 모멘텀폭스", color: "#F59E0B", disabled: false },
+    { key: "turtle", label: "🐢 배당거북", color: "#10B981", disabled: false },
+];
+
 function AgentCard({ agent }) {
     const [runStatus, setRunStatus] = useState(null);
     const [rebalStatus, setRebalStatus] = useState(null);
@@ -15,7 +25,6 @@ function AgentCard({ agent }) {
             if (data.ok) {
                 setRunStatus({ ok: true, msg: data.message || "실행 완료" });
             } else {
-                // ← error 필드 우선, 없으면 detail
                 setRunStatus({ ok: false, msg: data.error || data.detail || "알 수 없는 오류" });
             }
         } catch (err) {
@@ -69,8 +78,6 @@ function AgentCard({ agent }) {
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black text-gray-800 mb-4">{agent.label}</h3>
             <div className="flex flex-col gap-3">
-
-                {/* 매일 실행 */}
                 <button
                     onClick={handleRun}
                     disabled={running || agent.disabled}
@@ -84,8 +91,6 @@ function AgentCard({ agent }) {
                         {runStatus.ok ? "✅ " : "❌ "}{runStatus.msg}
                     </p>
                 )}
-
-                {/* 🐻 리밸런싱 버튼 */}
                 {agent.key === "bear" && (
                     <>
                         <button
@@ -109,8 +114,6 @@ function AgentCard({ agent }) {
                         )}
                     </>
                 )}
-
-                {/* 로그 삭제 */}
                 <button
                     onClick={handleClearLog}
                     disabled={deleting}
@@ -125,6 +128,19 @@ function AgentCard({ agent }) {
                 )}
             </div>
             {agent.disabled && <p className="text-xs text-gray-400 mt-3">※ 미구현 에이전트</p>}
+        </div>
+    );
+}
+
+export default function AdminPage() {
+    return (
+        <div className="min-h-screen bg-[#f5f7fb] p-6 md:p-10">
+            <h1 className="text-2xl font-black text-gray-800 mb-8">🛠 관리자 컨트롤</h1>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {AGENTS.map((agent) => (
+                    <AgentCard key={agent.key} agent={agent} />
+                ))}
+            </div>
         </div>
     );
 }
