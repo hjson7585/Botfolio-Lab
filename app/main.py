@@ -56,12 +56,26 @@ async def lifespan(app: FastAPI):
 
 api = FastAPI(lifespan=lifespan)
 
+origins = [
+    "http://localhost:5173",
+    "https://botfolio-lab-git-main-hjson7585-1584s-projects.vercel.app",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 api.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "https://hj-two-pied.vercel.app",
         "https://botfolio-lab-frontend.vercel.app",
+        "https://botfolio-lab-frontend.vercel.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
